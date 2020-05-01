@@ -10,17 +10,28 @@ class Analyzer:
             start_date = level_prog['data']['started_at'] or 'N/A'
             pass_date = level_prog['data']['passed_at'] or 'N/A'
             end_date = level_prog['data']['completed_at'] or 'N/A'
-            print(f'Level: {level} | Start date: {start_date} | Pass date: {pass_date} | Completion date: {end_date}')
+            print(f'Level: {level:>2} | Start date: {start_date:>27} | Pass date: {pass_date:>27} | Completion date: {end_date:>27}')
 
-    def process_assignments(self, assignments):
+    def process_assignments(self, assignments, subjects):
         for assignment in assignments['data']:
-            # TODO: Also consider srs_stage and match subject_id to actual character(s).
-            #       Query reviews for more data too.
+            # TODO: Query reviews for more data too.
             subject_id = assignment['data']['subject_id']
+            subject = subjects[subject_id]  # Radicals use an image not a character.
+            srs_stage_name = assignment['data']['srs_stage_name']
+            srs_stage_id = assignment['data']['srs_stage']
             start_date = assignment['data']['started_at'] or 'N/A'
             pass_date = assignment['data']['passed_at'] or 'N/A'
             end_date = assignment['data']['burned_at'] or 'N/A'
-            print(f'Subject ID: {subject_id} | Start date: {start_date} | Pass date: {pass_date} | Completion date: {end_date}')
+
+            # Hack to properly pad UTF-8 Japanese characters.
+            # Python does not handle multi-byte characters that well, especially considering full vs half width.
+            if 'Radical' not in subject:
+                padding_to_remove = len(subject) - 1
+                subject = f'{subject:>15}'.replace(' ', '', padding_to_remove)
+            else:
+                subject = f'{subject:>16}'
+
+            print(f'Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date:>27} | Pass date: {pass_date:>27} | Completion date: {end_date:>27}')
 
 
 if __name__ == '__main__':
@@ -46,7 +57,13 @@ if __name__ == '__main__':
     for page in client.get_level_progressions():
         analyzer.process_level_progressions(page)
 
+    subjects = {}
+
+    for page in client.get_subjects():
+        for subject in page['data']:
+            subjects[subject['id']] = subject['data']['characters'] or '[Radical]'
+
     print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
     for page in client.get_assignments():
-        analyzer.process_assignments(page)
+        analyzer.process_assignments(page, subjects)

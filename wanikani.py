@@ -38,3 +38,6 @@ class WaniKaniClient:
 
     def get_assignments(self):
         return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'assignments')
+
+    def get_subjects(self):
+        return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'subjects')
