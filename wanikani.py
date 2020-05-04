@@ -68,7 +68,7 @@ class WaniKaniClient:
 
         print(f'Username: {username}\nLevel: {level}\n')
 
-        return user
+        return user['data']
 
     def get_level_progressions(self):
         """
