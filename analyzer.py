@@ -19,8 +19,17 @@ class Analyzer:
     def __init__(self, wanikani: WaniKaniClient, db: PostgresClient):
         self._client = wanikani
         self._db = db
+        self._cache = {}
 
     def analyze_user_info(self):
+        """
+        Processes all the user's info through the WaniKani API.
+
+        Returns
+        -------
+        None
+
+        """
         id = self._process_user(user_info=self._client.get_user())
 
         print('======== LEVEL PROGRESSION DATA ========')
@@ -28,16 +37,15 @@ class Analyzer:
         for page in self._client.get_level_progressions():
             self._process_level_progressions(user_id=id, progressions=page)
 
-        subjects = {}
-
-        for page in self._client.get_subjects():
-            for subject in page['data']:
-                subjects[subject['id']] = subject['data']['characters'] or '[Radical]'
+        # Only need to populate the subjects once.
+        if self._db.query_one('SELECT COUNT(*) FROM subject')['count'] == 0:
+            for page in self._client.get_subjects():
+                self._process_subjects(subjects=page)
 
         print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
         for page in self._client.get_assignments():
-            self._process_assignments(user_id=id, assignments=page, subjects=subjects)
+            self._process_assignments(user_id=id, assignments=page)
 
     def _get_aggregates(self, data: list):
         """
@@ -65,9 +73,9 @@ class Analyzer:
         Parameters
         ----------
         first_date : str
-            A datetime string provided by the WaniKani API, which is in ISO-8601.
+            A datetime string in ISO-8601 format.
         second_date : str
-            A datetime string provided by the WaniKani API, which is in ISO-8601.
+            A datetime string in ISO-8601 format.
 
         Returns
         -------
@@ -75,21 +83,62 @@ class Analyzer:
             The number of seconds elapsed between the two datetimes.
 
         """
-        start = datetime.strptime(first_date, DATE_FORMAT) if first_date != 'N/A' else None
-        end = datetime.strptime(second_date, DATE_FORMAT) if second_date != 'N/A' else None
-        delta = abs((end - start).total_seconds()) if start is not None and end is not None else None
+        if first_date is None or second_date is None:
+            return None
+
+        start = datetime.strptime(first_date, DATE_FORMAT)
+        end = datetime.strptime(second_date, DATE_FORMAT)
+        delta = abs((end - start).total_seconds())
 
         return delta
 
-    def _process_user(self, user_info):
-        new_id = db.execute(
-            'INSERT INTO account (level, username) VALUES (%s, %s) RETURNING id',
-            (user_info['level'], user_info['username'])
+    def _process_user(self, user_info: dict):
+        """
+        Creates an entry for the user in the database to establish data relationships.
+
+        Parameters
+        ----------
+        user_info : dict
+            The JSON containing the user info.
+
+        Returns
+        -------
+        int
+            The ID of the user in the database.
+
+        """
+        username = user_info['username']
+        existing_user = self._db.query_all(f"SELECT id, last_queried FROM account WHERE username = '{username}'")
+
+        current_time = datetime.now().strftime(DATE_FORMAT)
+
+        if existing_user:
+            user_id = existing_user[0]['id']
+            last_queried_time = existing_user[0]['last_queried'].strftime(DATE_FORMAT)
+            time_since_last_query = self._calculate_time_delta(last_queried_time, current_time) or 0
+            use_cached_values = time_since_last_query < (10 * 60)
+
+            if not use_cached_values:
+                self._db.execute('UPDATE account SET last_queried = %s WHERE id = %s', (current_time, user_id))
+
+            self._cache[user_id] = use_cached_values  # Use cached data for 10 minutes to prevent unnecessary load.
+
+            return user_id
+
+        user_id = self._db.execute(
+            'INSERT INTO account (level, username, last_queried) VALUES (%s, %s, %s) RETURNING id',
+            (user_info['level'], username, current_time)
         )
 
-        return new_id
+        self._cache[user_id] = True
+
+        return user_id
 
     def _process_level_progressions(self, user_id: int, progressions: dict):
+        # Re-use values from the database.
+        if self._cache[user_id]:
+            pass
+
         level_stats = {}
         durations = {
             'pass': [],
@@ -98,14 +147,19 @@ class Analyzer:
 
         for level_prog in progressions['data']:
             level = level_prog['data']['level']
-            start_date = level_prog['data']['started_at'] or 'N/A'
-            pass_date = level_prog['data']['passed_at'] or 'N/A'
-            end_date = level_prog['data']['completed_at'] or 'N/A'
+            start_date = level_prog['data']['started_at']
+            pass_date = level_prog['data']['passed_at']
+            end_date = level_prog['data']['completed_at']
 
             level_stats[level] = {
                 'pass_duration': self._calculate_time_delta(start_date, pass_date),
                 'complete_duration':  self._calculate_time_delta(start_date, end_date)
             }
+
+            self._db.execute(
+                'INSERT INTO level_progression (level, user_id, started_at, passed_at, completed_at) VALUES (%s, %s, %s, %s, %s)',
+                (level, user_id, start_date, pass_date, end_date)
+            )
 
             if level_stats[level]['pass_duration'] is not None:
                 durations['pass'].append(level_stats[level]['pass_duration'])
@@ -113,7 +167,7 @@ class Analyzer:
             if level_stats[level]['complete_duration'] is not None:
                 durations['complete'].append(level_stats[level]['complete_duration'])
 
-            print(f'Level: {level:>2} | Start date: {start_date:>27} | Pass date: {pass_date:>27} | Completion date: {end_date:>27}')
+            print(f'Level: {level:>2} | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
 
         level_stats['aggregates'] = {
             'pass': self._get_aggregates(durations['pass']),
@@ -122,16 +176,34 @@ class Analyzer:
 
         return level_stats
 
-    def _process_assignments(self, user_id: int, assignments: dict, subjects: dict):  # TODO: Remove subjects and instead query DB for subject IDs.
+    def _process_subjects(self, subjects: dict):
+        for subject in subjects['data']:
+            character_images = None
+
+            try:
+                character_images = subject['data']['characters_images']['url']
+            except:
+                pass
+
+            self._db.execute(
+                'INSERT INTO subject (id, level, type, image_url, characters) VALUES (%s, %s, %s, %s, %s)',
+                (subject['id'], subject['data']['level'], subject['object'], character_images, subject['data']['characters'] or '[Radical]')
+            )
+
+    def _process_assignments(self, user_id: int, assignments: dict):
+        # Re-use values from the database.
+        if self._cache[user_id]:
+            pass
+
         for assignment in assignments['data']:
             # TODO: Query reviews for more data too.
             subject_id = assignment['data']['subject_id']
-            subject = subjects[subject_id]  # Radicals use an image not a character.
+            subject = self._db.query_one(f'SELECT characters FROM subject WHERE id = {subject_id}')['characters']
             srs_stage_name = assignment['data']['srs_stage_name']
             srs_stage_id = assignment['data']['srs_stage']
-            start_date = assignment['data']['started_at'] or 'N/A'
-            pass_date = assignment['data']['passed_at'] or 'N/A'
-            end_date = assignment['data']['burned_at'] or 'N/A'
+            start_date = assignment['data']['started_at']
+            pass_date = assignment['data']['passed_at']
+            end_date = assignment['data']['burned_at']
 
             # Hack to properly pad UTF-8 Japanese characters.
             # Python does not handle multi-byte characters that well, especially considering full vs half width.
@@ -141,7 +213,7 @@ class Analyzer:
             else:
                 subject = f'{subject:>16}'
 
-            print(f'Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date:>27} | Pass date: {pass_date:>27} | Completion date: {end_date:>27}')
+            print(f'Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
 
 
 if __name__ == '__main__':
@@ -164,12 +236,4 @@ if __name__ == '__main__':
     try:
         analyzer.analyze_user_info()
     finally:
-        # Remove all data.
-        db.execute('DELETE FROM account')
-        db.execute('DELETE FROM assignment')
-        db.execute('DELETE FROM level_progression')
-        db.execute('DELETE FROM review')
-        db.execute('DELETE FROM subject_type')
-        db.execute('DELETE FROM srs_stage')
-        db.execute('DELETE FROM subject')
         db.close()
