@@ -48,18 +48,21 @@ class PostgresClient:
             Returned when no return value is specified in the SQL.
 
         """
-        cursor = self._connection.cursor()
-        cursor.execute(sql, args)
-
         retval = None
 
-        try:
-            retval = cursor.fetchone()[0]
-        except:
-            print('No return value was designated in the SQL.')
+        cursor = self._connection.cursor()
 
-        self._connection.commit()
-        cursor.close()
+        try:
+            cursor.execute(sql, args)
+            try:
+                retval = cursor.fetchone()[0]
+            except:
+                print('No return value was designated in the SQL.')
+        except:
+            self._connection.rollback()
+        finally:
+            self._connection.commit()
+            cursor.close()
 
         return retval
 
