@@ -57,8 +57,9 @@ class PostgresClient:
             try:
                 retval = cursor.fetchone()[0]
             except:
-                print('No return value was designated in the SQL.')
-        except:
+                pass  # No return value was designated in the SQL probably, so just ignore it.
+        except Exception as e:
+            print(f'ERROR: {str(e)}')
             self._connection.rollback()
         finally:
             self._connection.commit()
@@ -66,7 +67,7 @@ class PostgresClient:
 
         return retval
 
-    def query(self, sql: str):
+    def query_all(self, sql: str):
         """
         Performs the SQL query and returns all rows in an associative format.
 
@@ -88,6 +89,28 @@ class PostgresClient:
 
         return values
 
+    def query_one(self, sql: str):
+        """
+        Performs the SQL query and returns one row in an associative format.
+
+        Parameters
+        ----------
+        sql : str
+            The query to perform.
+
+        Returns
+        -------
+        dict
+            A dictionary with the info of the first row.
+
+        """
+        cursor = self._connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(sql)
+        values = cursor.fetchone()
+        cursor.close()
+
+        return values
+
     def close(self):
         """
         Closes the database connection.
@@ -104,21 +127,21 @@ if __name__ == '__main__':
     db = PostgresClient(dbname='postgres', user='postgres', password='postgres')
 
     # Example SELECT query.
-    print(db.query('SELECT * FROM account'))
+    print(db.query_all('SELECT * FROM account'))
 
     # Example INSERT statement.
     db.execute(
         'INSERT INTO account (id, level, username) VALUES (%s, %s, %s)',
         (1, 420, 'bob')
     )
-    print(db.query('SELECT * FROM account'))
+    print(db.query_all('SELECT * FROM account'))
 
     # Example UPDATE statement.
     db.execute('UPDATE account SET level = %s WHERE username = %s', (404, 'bob'))
-    print(db.query('SELECT * FROM account'))
+    print(db.query_all('SELECT * FROM account'))
 
     # Example DELETE statement.
     db.execute('DELETE FROM account')
-    print(db.query('SELECT * FROM account'))
+    print(db.query_all('SELECT * FROM account'))
 
     db.close()
