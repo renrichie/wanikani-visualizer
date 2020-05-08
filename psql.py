@@ -40,13 +40,28 @@ class PostgresClient:
 
         Returns
         -------
+        int
+            An integer from the database, most likely an ID.
+        str
+            Any string.
         None
+            Returned when no return value is specified in the SQL.
 
         """
         cursor = self._connection.cursor()
         cursor.execute(sql, args)
+
+        retval = None
+
+        try:
+            retval = cursor.fetchone()[0]
+        except:
+            print('No return value was designated in the SQL.')
+
         self._connection.commit()
         cursor.close()
+
+        return retval
 
     def query(self, sql: str):
         """
