@@ -21,12 +21,12 @@ class Analyzer:
         self._db = db
 
     def analyze_user_info(self):
-        self._process_user(user_info=self._client.get_user())
+        id = self._process_user(user_info=self._client.get_user())
 
         print('======== LEVEL PROGRESSION DATA ========')
 
         for page in self._client.get_level_progressions():
-            self._process_level_progressions(page)
+            self._process_level_progressions(user_id=id, progressions=page)
 
         subjects = {}
 
@@ -37,7 +37,7 @@ class Analyzer:
         print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
         for page in self._client.get_assignments():
-            self._process_assignments(page, subjects)
+            self._process_assignments(user_id=id, assignments=page, subjects=subjects)
 
     def _get_aggregates(self, data: list):
         """
@@ -160,14 +160,16 @@ if __name__ == '__main__':
     client = WaniKaniClient(api_key)
     db = PostgresClient(dbname='postgres', user='postgres', password='postgres')
     analyzer = Analyzer(wanikani=client, db=db)
-    analyzer.analyze_user_info()
 
-    # Remove all data.
-    db.execute('DELETE FROM account')
-    db.execute('DELETE FROM assignment')
-    db.execute('DELETE FROM level_progression')
-    db.execute('DELETE FROM review')
-    db.execute('DELETE FROM subject_type')
-    db.execute('DELETE FROM srs_stage')
-    db.execute('DELETE FROM subject')
-    db.close()
+    try:
+        analyzer.analyze_user_info()
+    finally:
+        # Remove all data.
+        db.execute('DELETE FROM account')
+        db.execute('DELETE FROM assignment')
+        db.execute('DELETE FROM level_progression')
+        db.execute('DELETE FROM review')
+        db.execute('DELETE FROM subject_type')
+        db.execute('DELETE FROM srs_stage')
+        db.execute('DELETE FROM subject')
+        db.close()
