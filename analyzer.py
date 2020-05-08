@@ -1,11 +1,44 @@
 import json
 from datetime import datetime
 
-import wanikani
+from wanikani import WaniKaniClient, DATE_FORMAT
 import stats
+from psql import PostgresClient
 
 
 class Analyzer:
+    """
+    This is the main application.
+    It aggregates and analyzes the WaniKani data.
+
+    Parameters
+    ----------
+    db : PostgresClient
+        The Postgres DB client.
+    """
+    def __init__(self, wanikani: WaniKaniClient, db: PostgresClient):
+        self._client = wanikani
+        self._db = db
+
+    def analyze_user_info(self):
+        self._process_user(user_info=self._client.get_user())
+
+        print('======== LEVEL PROGRESSION DATA ========')
+
+        for page in self._client.get_level_progressions():
+            self._process_level_progressions(page)
+
+        subjects = {}
+
+        for page in self._client.get_subjects():
+            for subject in page['data']:
+                subjects[subject['id']] = subject['data']['characters'] or '[Radical]'
+
+        print('\n======== ASSIGNMENT PROGRESS DATA ========')
+
+        for page in self._client.get_assignments():
+            self._process_assignments(page, subjects)
+
     def _get_aggregates(self, data: list):
         """
         Creates a dictionary containing the mean and median aggregates for the list.
@@ -42,13 +75,21 @@ class Analyzer:
             The number of seconds elapsed between the two datetimes.
 
         """
-        start = datetime.strptime(first_date, wanikani.DATE_FORMAT) if first_date != 'N/A' else None
-        end = datetime.strptime(second_date, wanikani.DATE_FORMAT) if second_date != 'N/A' else None
+        start = datetime.strptime(first_date, DATE_FORMAT) if first_date != 'N/A' else None
+        end = datetime.strptime(second_date, DATE_FORMAT) if second_date != 'N/A' else None
         delta = abs((end - start).total_seconds()) if start is not None and end is not None else None
 
         return delta
 
-    def process_level_progressions(self, progressions: dict):
+    def _process_user(self, user_info):
+        new_id = db.execute(
+            'INSERT INTO account (level, username) VALUES (%s, %s) RETURNING id',
+            (user_info['level'], user_info['username'])
+        )
+
+        return new_id
+
+    def _process_level_progressions(self, user_id: int, progressions: dict):
         level_stats = {}
         durations = {
             'pass': [],
@@ -81,7 +122,7 @@ class Analyzer:
 
         return level_stats
 
-    def process_assignments(self, assignments: dict, subjects: dict):
+    def _process_assignments(self, user_id: int, assignments: dict, subjects: dict):  # TODO: Remove subjects and instead query DB for subject IDs.
         for assignment in assignments['data']:
             # TODO: Query reviews for more data too.
             subject_id = assignment['data']['subject_id']
@@ -116,23 +157,17 @@ if __name__ == '__main__':
     except IOError:
         raise SystemExit('Unable to load the API key.')
 
-    client = wanikani.WaniKaniClient(api_key)
-    client.get_user()
+    client = WaniKaniClient(api_key)
+    db = PostgresClient(dbname='postgres', user='postgres', password='postgres')
+    analyzer = Analyzer(wanikani=client, db=db)
+    analyzer.analyze_user_info()
 
-    analyzer = Analyzer()
-
-    print('======== LEVEL PROGRESSION DATA ========')
-
-    for page in client.get_level_progressions():
-        analyzer.process_level_progressions(page)
-
-    subjects = {}
-
-    for page in client.get_subjects():
-        for subject in page['data']:
-            subjects[subject['id']] = subject['data']['characters'] or '[Radical]'
-
-    print('\n======== ASSIGNMENT PROGRESS DATA ========')
-
-    for page in client.get_assignments():
-        analyzer.process_assignments(page, subjects)
+    # Remove all data.
+    db.execute('DELETE FROM account')
+    db.execute('DELETE FROM assignment')
+    db.execute('DELETE FROM level_progression')
+    db.execute('DELETE FROM review')
+    db.execute('DELETE FROM subject_type')
+    db.execute('DELETE FROM srs_stage')
+    db.execute('DELETE FROM subject')
+    db.close()
