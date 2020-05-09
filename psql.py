@@ -1,5 +1,7 @@
 import psycopg2
 import psycopg2.extras
+import logging
+from datetime import datetime
 
 
 class PostgresClient:
@@ -18,13 +20,14 @@ class PostgresClient:
     """
     def __init__(self, dbname: str, user: str, password: str, host='localhost', port='5432'):
         self._connection = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
+        logging.basicConfig(filename=f"{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
     def __del__(self):
         # Close the connection for the user if they forgot to.
         try:
             self._connection.close()
-        except:
-            pass
+        except Exception as e:
+            logging.debug(f'ERROR: {str(e)}')
 
     def execute(self, sql: str, args: tuple = ()):
         """
@@ -59,7 +62,7 @@ class PostgresClient:
             except:
                 pass  # No return value was designated in the SQL probably, so just ignore it.
         except Exception as e:
-            print(f'ERROR: {str(e)}')
+            logging.debug(f'ERROR: {str(e)}')
             self._connection.rollback()
         finally:
             self._connection.commit()
@@ -80,12 +83,20 @@ class PostgresClient:
         -------
         list
             A list of dictionaries with the info per row.
+        None
+            Returned when an error occurs.
 
         """
         cursor = self._connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(sql)
-        values = cursor.fetchall()
-        cursor.close()
+        values = None
+
+        try:
+            cursor.execute(sql)
+            values = cursor.fetchall()
+        except Exception as e:
+            logging.debug(f'ERROR: {str(e)}')
+        finally:
+            cursor.close()
 
         return values
 
@@ -102,12 +113,20 @@ class PostgresClient:
         -------
         dict
             A dictionary with the info of the first row.
+        None
+            Returned when an error occurs.
 
         """
         cursor = self._connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(sql)
-        values = cursor.fetchone()
-        cursor.close()
+        values = None
+
+        try:
+            cursor.execute(sql)
+            values = cursor.fetchone()
+        except Exception as e:
+            logging.debug(f'ERROR: {str(e)}')
+        finally:
+            cursor.close()
 
         return values
 
@@ -121,6 +140,22 @@ class PostgresClient:
 
         """
         self._connection.close()
+
+    def clear_tables(self, tables: list):
+        """
+        Removes the data from the specified tables in order.
+
+        Parameters
+        ----------
+        tables: list
+            A list of tables to clear in order.
+
+        Returns
+        -------
+        None
+
+        """
+        self.execute(f"TRUNCATE {', '.join(tables)}")
 
 
 if __name__ == '__main__':
