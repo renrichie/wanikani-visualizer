@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 from wanikani import WaniKaniClient, DATE_FORMAT
@@ -20,6 +21,7 @@ class Analyzer:
         self._client = wanikani
         self._db = db
         self._cache = {}
+        logging.basicConfig(filename=f"{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
     def analyze_user_info(self):
         """
@@ -30,6 +32,9 @@ class Analyzer:
         None
 
         """
+        self._clean_stale_data()
+        self._initialize_static_info()
+
         id = self._process_user(user_info=self._client.get_user())
 
         print('======== LEVEL PROGRESSION DATA ========')
@@ -37,15 +42,53 @@ class Analyzer:
         for page in self._client.get_level_progressions():
             self._process_level_progressions(user_id=id, progressions=page)
 
-        # Only need to populate the subjects once.
-        if self._db.query_one('SELECT COUNT(*) FROM subject')['count'] == 0:
-            for page in self._client.get_subjects():
-                self._process_subjects(subjects=page)
+        print('\n======== REVIEW DATA ========')
+
+        for page in self._client.get_reviews():
+            self._process_reviews(user_id=id, reviews=page)
 
         print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
         for page in self._client.get_assignments():
             self._process_assignments(user_id=id, assignments=page)
+
+    def _clean_stale_data(self):
+        """
+        Removes all data from the database every week to ensure it's accuracy.
+
+        Returns
+        -------
+        None
+
+        """
+        oldest_record = self._db.query_one('SELECT last_queried FROM account ORDER BY last_queried ASC LIMIT 1')
+        current_time = datetime.now().strftime(DATE_FORMAT)
+        old_time = oldest_record['last_queried'].strftime(DATE_FORMAT)
+        time_elapsed_since_first_query = self._calculate_time_delta(old_time, current_time)
+
+        if time_elapsed_since_first_query >= (60 * 60 * 24 * 7):
+            logging.debug(f'Time elapsed since first query: {time_elapsed_since_first_query} seconds')
+            logging.debug('Clearing stale data...')
+            self._db.clear_tables(
+                ['review', 'assignment', 'level_progression', 'srs_stage', 'subject', 'account']
+            )
+
+    def _initialize_static_info(self):
+        """
+        Initializes all static info that won't change such as subjects and SRS stages.
+
+        Returns
+        -------
+        None
+
+        """
+        # Only need to populate the subjects once.
+        if self._db.query_one('SELECT COUNT(*) FROM subject')['count'] == 0:
+            for page in self._client.get_subjects():
+                self._process_subjects(subjects=page)
+
+        if self._db.query_one('SELECT COUNT(*) FROM srs_stage')['count'] == 0:
+            self._process_srs_stages(stages=self._client.get_srs_stages())  # No need to paginate since there are so few.
 
     def _get_aggregates(self, data: list):
         """
@@ -108,13 +151,19 @@ class Analyzer:
 
         """
         username = user_info['username']
-        existing_user = self._db.query_all(f"SELECT id, last_queried FROM account WHERE username = '{username}'")
+
+        print(f'Username: {username}')
+        print(f"Level: {user_info['level']}\n")
+
+        existing_user = self._db.query_one(
+            f"SELECT id, username, level, last_queried FROM account WHERE username = '{username}'"
+        )
 
         current_time = datetime.now().strftime(DATE_FORMAT)
 
         if existing_user:
-            user_id = existing_user[0]['id']
-            last_queried_time = existing_user[0]['last_queried'].strftime(DATE_FORMAT)
+            user_id = existing_user['id']
+            last_queried_time = existing_user['last_queried'].strftime(DATE_FORMAT)
             time_since_last_query = self._calculate_time_delta(last_queried_time, current_time) or 0
             use_cached_values = time_since_last_query < (10 * 60)
 
@@ -215,6 +264,26 @@ class Analyzer:
 
             print(f'Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
 
+    def _process_srs_stages(self, stages: dict):
+        for stage in stages['data']:
+            self._db.execute(
+                'INSERT INTO srs_stage (id, name) VALUES (%s, %s)',
+                (stage['srs_stage'], stage['srs_stage_name'])
+            )
+
+    def _process_reviews(self, user_id: int, reviews: dict):
+        # Re-use values from the database.
+        if self._cache[user_id]:
+            pass
+
+        for review in reviews['data']:
+            assignment_id = review['data']['assignment_id']
+            starting_srs_stage = review['data']['starting_srs_stage']
+            ending_srs_stage = review['data']['ending_srs_stage']
+            incorrect_meaning_answers = review['data']['incorrect_meaning_answers']
+            incorrect_reading_answers = review['data']['incorrect_reading_answers']
+            print(f'Assignment ID: {assignment_id:>10} | Starting stage: {starting_srs_stage:>2} | Ending stage: {ending_srs_stage:>2} | Incorrect meaning answers: {incorrect_meaning_answers:>4} | Incorrect reading answers: {incorrect_reading_answers:>4}')
+
 
 if __name__ == '__main__':
     api_key = None
@@ -225,8 +294,10 @@ if __name__ == '__main__':
                 api_key = json.load(file)['api_key']
                 print('API key loaded.\n')
             except Exception as e:
+                logging.debug(f'ERROR: {str(e)}')
                 raise SystemExit(f'An error occurred while loading the JSON: {e}')
-    except IOError:
+    except IOError as e:
+        logging.debug(f'ERROR: {str(e)}')
         raise SystemExit('Unable to load the API key.')
 
     client = WaniKaniClient(api_key)
