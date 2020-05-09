@@ -66,8 +66,6 @@ class WaniKaniClient:
         username = user['data']['username']
         level = user['data']['level']
 
-        print(f'Username: {username}\nLevel: {level}\n')
-
         return user['data']
 
     def get_level_progressions(self):
@@ -105,3 +103,31 @@ class WaniKaniClient:
 
         """
         return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'subjects')
+
+    def get_srs_stages(self):
+        """
+        Gets all the SRS stage info.
+
+        Returns
+        -------
+        dict
+            The JSON response for the current page of SRS stage info.
+
+        """
+        session = requests.Session()
+        response = session.get(url=WaniKaniClient.API_URI + 'srs_stages', headers=self.__auth_header)
+        response.raise_for_status()
+
+        return response.json()
+
+    def get_reviews(self):
+        """
+        A generator for getting all the review info.
+
+        Returns
+        -------
+        dict
+            The JSON response for the current page of review info.
+
+        """
+        return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'reviews')
