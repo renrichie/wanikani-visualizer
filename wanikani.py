@@ -21,7 +21,7 @@ class WaniKaniClient:
             'Authorization': f'Bearer {api_key}'
         }
 
-    def _perform_paginated_get_request(self, endpoint: str):
+    def _perform_paginated_get_request(self, endpoint: str) -> dict:
         """
         A generator for generic GET requests that automatically handles pagination for the user.
 
@@ -49,7 +49,7 @@ class WaniKaniClient:
             page = response.json()
             yield page
 
-    def get_user(self):
+    def get_user(self) -> dict:
         """
         Gets the user info.
 
@@ -63,8 +63,6 @@ class WaniKaniClient:
         response.raise_for_status()
 
         user = response.json()
-        username = user['data']['username']
-        level = user['data']['level']
 
         return user['data']
 
@@ -80,7 +78,7 @@ class WaniKaniClient:
         """
         return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'level_progressions')
 
-    def get_assignments(self):
+    def get_assignments(self) -> dict:
         """
         A generator for getting all the assignment info.
 
@@ -92,7 +90,7 @@ class WaniKaniClient:
         """
         return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'assignments')
 
-    def get_subjects(self):
+    def get_subjects(self) -> dict:
         """
         A generator for getting all the subject info.
 
@@ -104,7 +102,7 @@ class WaniKaniClient:
         """
         return self._perform_paginated_get_request(endpoint=WaniKaniClient.API_URI + 'subjects')
 
-    def get_srs_stages(self):
+    def get_srs_stages(self) -> dict:
         """
         Gets all the SRS stage info.
 
@@ -120,7 +118,7 @@ class WaniKaniClient:
 
         return response.json()
 
-    def get_reviews(self):
+    def get_reviews(self) -> dict:
         """
         A generator for getting all the review info.
 
