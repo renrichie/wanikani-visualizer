@@ -2,6 +2,7 @@ import psycopg2
 import psycopg2.extras
 import logging
 from datetime import datetime
+from typing import Any
 
 
 class PostgresClient:
@@ -29,7 +30,7 @@ class PostgresClient:
         except Exception as e:
             logging.debug(f'ERROR: {str(e)}')
 
-    def execute(self, sql: str, args: tuple = ()):
+    def execute(self, sql: str, args: tuple = ()) -> Any:
         """
         Performs SQL statements.
         If there are no arguments, pass in an empty tuple.
@@ -43,12 +44,8 @@ class PostgresClient:
 
         Returns
         -------
-        int
-            An integer from the database, most likely an ID.
-        str
-            Any string.
-        None
-            Returned when no return value is specified in the SQL.
+        Any
+            Whatever return value is specified in the SQL or None if not.
 
         """
         retval = None
@@ -64,13 +61,14 @@ class PostgresClient:
         except Exception as e:
             logging.debug(f'ERROR: {str(e)}')
             self._connection.rollback()
+            raise e
         finally:
             self._connection.commit()
             cursor.close()
 
         return retval
 
-    def query_all(self, sql: str):
+    def query_all(self, sql: str) -> list:
         """
         Performs the SQL query and returns all rows in an associative format.
 
@@ -83,8 +81,6 @@ class PostgresClient:
         -------
         list
             A list of dictionaries with the info per row.
-        None
-            Returned when an error occurs.
 
         """
         cursor = self._connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -95,12 +91,13 @@ class PostgresClient:
             values = cursor.fetchall()
         except Exception as e:
             logging.debug(f'ERROR: {str(e)}')
+            raise e
         finally:
             cursor.close()
 
         return values
 
-    def query_one(self, sql: str):
+    def query_one(self, sql: str) -> dict:
         """
         Performs the SQL query and returns one row in an associative format.
 
@@ -113,8 +110,6 @@ class PostgresClient:
         -------
         dict
             A dictionary with the info of the first row.
-        None
-            Returned when an error occurs.
 
         """
         cursor = self._connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -125,6 +120,7 @@ class PostgresClient:
             values = cursor.fetchone()
         except Exception as e:
             logging.debug(f'ERROR: {str(e)}')
+            raise e
         finally:
             cursor.close()
 
