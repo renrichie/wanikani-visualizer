@@ -21,14 +21,14 @@ class PostgresClient:
     """
     def __init__(self, dbname: str, user: str, password: str, host='localhost', port='5432'):
         self._connection = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
-        logging.basicConfig(filename=f"{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
+        logging.basicConfig(filename=f"logs/{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
     def __del__(self):
         # Close the connection for the user if they forgot to.
         try:
             self._connection.close()
         except Exception as e:
-            logging.debug(f'ERROR: {str(e)}')
+            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
 
     def execute(self, sql: str, args: tuple = ()) -> Any:
         """
@@ -59,7 +59,7 @@ class PostgresClient:
             except:
                 pass  # No return value was designated in the SQL probably, so just ignore it.
         except Exception as e:
-            logging.debug(f'ERROR: {str(e)}')
+            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
             self._connection.rollback()
             raise e
         finally:
@@ -90,7 +90,7 @@ class PostgresClient:
             cursor.execute(sql)
             values = cursor.fetchall()
         except Exception as e:
-            logging.debug(f'ERROR: {str(e)}')
+            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
             raise e
         finally:
             cursor.close()
@@ -119,7 +119,7 @@ class PostgresClient:
             cursor.execute(sql)
             values = cursor.fetchone()
         except Exception as e:
-            logging.debug(f'ERROR: {str(e)}')
+            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
             raise e
         finally:
             cursor.close()
@@ -152,6 +152,35 @@ class PostgresClient:
 
         """
         self.execute(f"TRUNCATE {', '.join(tables)}")
+
+    def process_row(self, exists_query: str, insert_sql: str, update_sql: str, insert_args: tuple, update_args: tuple):
+        """
+        Creates the row if it doesn't already exist, otherwise it updates it.
+
+        Parameters
+        ----------
+        exists_query : str
+            The query to use to check row existence.
+        insert_sql : str
+            The INSERT statement to execute if the row does not exist.
+        update_sql : str
+            The UPDATE statement to execute if the row already exists.
+        insert_args : tuple
+            The arguments to execute the INSERT with.
+        update_args : tuple
+            The arguments to execute the UPDATE with.
+
+        Returns
+        -------
+        None
+
+        """
+        existing_record = self.query_one(exists_query)['exists']
+
+        if existing_record:
+            self.execute(update_sql, update_args)
+        else:
+            self.execute(insert_sql, insert_args)
 
 
 if __name__ == '__main__':
