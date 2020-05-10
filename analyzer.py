@@ -122,7 +122,7 @@ class Analyzer:
         """
         return {'mean': stats.get_mean(data), 'median': stats.get_median(data)}
 
-    def _calculate_time_delta(self, first_date: Union[str, datetime], second_date: Union[str, datetime]) -> float:
+    def _calculate_time_delta(self, first_date: Union[str, datetime], second_date: Union[str, datetime]) -> Union[float, None]:
         """
         Calculates the time delta between two dates in terms of number of seconds.
         The order of the parameters does not matter.
@@ -136,8 +136,8 @@ class Analyzer:
 
         Returns
         -------
-        int
-            The number of seconds elapsed between the two datetimes.
+        Union[float, None]
+            The number of seconds elapsed between the two datetimes. Returns None when either date is None.
 
         """
         if first_date is None or second_date is None:

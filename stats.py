@@ -1,7 +1,8 @@
 import heapq
+from typing import Union
 
 
-def get_median(data: list):
+def get_median(data: list) -> Union[float, None]:
     """
     Calculates the median of the given list by using balanced min and max heaps.
     If there are no elements, this will return None.
@@ -13,10 +14,8 @@ def get_median(data: list):
 
     Returns
     -------
-    float
-        The median value as a float.
-    None
-        Only returned when the list is empty.
+    Union[float, None]
+        Returns the median value as a float or None if the list is empty.
 
     """
     if len(data) == 0:
@@ -40,7 +39,7 @@ def get_median(data: list):
     return heapq.heappop(low) if len(low) > len(high) else (heapq.heappop(low) + (heapq.heappop(high) * -1)) * 0.5
 
 
-def get_mean(data: list):
+def get_mean(data: list) -> Union[float, None]:
     """
     Calculates the mean of the given list.
 
@@ -51,10 +50,8 @@ def get_mean(data: list):
 
     Returns
     -------
-    float
-        The mean value as a float.
-    None
-        Only returned when the list is empty.
+    Union[float, None]
+        Returns the median value as a float or None if the list is empty.
 
     """
     return sum(data) / len(data) if len(data) > 0 else None
