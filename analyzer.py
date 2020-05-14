@@ -104,24 +104,6 @@ class Analyzer:
         if self._db.query_one('SELECT COUNT(*) FROM srs_stage')['count'] == 0:
             self._process_srs_stages(stages=self._client.get_srs_stages())  # No need to paginate since there are so few.
 
-    def _get_aggregates(self, data: list) -> dict:
-        """
-        Creates a dictionary containing the mean and median aggregates for the list.
-        If the list is empty, the value for each key will be None.
-
-        Parameters
-        ----------
-        data : list
-            A list of numeric values.
-
-        Returns
-        -------
-        dict
-            A dictionary with the 'mean' and 'median' keys containing their respective values.
-
-        """
-        return {'mean': stats.get_mean(data), 'median': stats.get_median(data)}
-
     def _calculate_time_delta(self, first_date: Union[str, datetime], second_date: Union[str, datetime]) -> Union[float, None]:
         """
         Calculates the time delta between two dates in terms of number of seconds.
@@ -245,7 +227,6 @@ class Analyzer:
 
     def _process_assignments(self, user_id: int, assignments: dict):
         for assignment in assignments['data']:
-            # TODO: Query reviews for more data too.
             id = assignment['id']
             subject_id = assignment['data']['subject_id']
             subject = self._db.query_one(f'SELECT characters FROM subject WHERE id = {subject_id}')['characters']
@@ -314,39 +295,66 @@ class Analyzer:
             print(f'ID: {id:>10} | Assignment ID: {assignment_id:>10} | Starting stage: {starting_srs_stage:>2} | Ending stage: {ending_srs_stage:>2} | Incorrect meaning answers: {incorrect_meaning_answers:>4} | Incorrect reading answers: {incorrect_reading_answers:>4}')
 
     def _analyze_level_progressions(self):
-        level_stats = {}
-        durations = {
-            'pass': [],
-            'complete': []
-        }
+        stats = {}
+        stats['aggregates'] = {}
 
-        level_progs = self._db.query_all('SELECT * FROM level_progression')
+        stats['levels'] = self._db.query_all(
+            "SELECT level, "
+            "DATEDIFF('seconds', started_at, passed_at) AS pass_duration, "
+            "DATEDIFF('seconds', started_at, completed_at) AS complete_duration "
+            "FROM level_progression"
+        )
 
-        for level_prog in level_progs:
-            level = level_prog['level']
-            start_date = level_prog['started_at']
-            pass_date = level_prog['passed_at']
-            end_date = level_prog['completed_at']
+        stats['aggregates']['medians'] = self._db.query_one(
+            "SELECT MEDIAN(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
+            "MEDIAN(DATEDIFF('seconds', started_at, completed_at)) AS complete_duration "
+            "FROM level_progression"
+        )
 
-            level_stats[level] = {
-                'pass_duration': self._calculate_time_delta(start_date, pass_date),
-                'complete_duration': self._calculate_time_delta(start_date, end_date)
-            }
+        stats['aggregates']['averages'] = self._db.query_one(
+            "SELECT AVG(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
+            "AVG(DATEDIFF('seconds', started_at, completed_at)) AS complete_duration "
+            "FROM level_progression"
+        )
 
-            if level_stats[level]['pass_duration'] is not None:
-                durations['pass'].append(level_stats[level]['pass_duration'])
+        stats['aggregates']['highest'] = {}
+        stats['aggregates']['lowest'] = {}
 
-            if level_stats[level]['complete_duration'] is not None:
-                durations['complete'].append(level_stats[level]['complete_duration'])
+        # Grab the data in sorted order so we can get both top and bottom N values, where N is arbitrary.
+        pass_durations = self._db.query_all(
+            "WITH pass_aggregate AS ("
+            "SELECT level, "
+            "DATEDIFF('seconds', started_at, passed_at) AS pass_duration "
+            "FROM level_progression) "
+            "SELECT * "
+            "FROM pass_aggregate "
+            "WHERE pass_duration IS NOT NULL "
+            "ORDER BY pass_duration DESC"
+        )
 
-            level_stats['aggregates'] = {
-                'pass': self._get_aggregates(durations['pass']),
-                'complete': self._get_aggregates(durations['complete'])
-            }
+        stats['aggregates']['highest']['pass_duration'] = pass_durations[:3]
+        stats['aggregates']['lowest']['pass_duration'] = pass_durations[-3:]
+        stats['aggregates']['lowest']['pass_duration'].reverse()  # Reverse to get the lowest N in correct order.
 
-        return level_stats
+        complete_durations = self._db.query_all(
+            "WITH complete_aggregate AS ("
+            "SELECT level, "
+            "DATEDIFF('seconds', started_at, completed_at) AS complete_duration "
+            "FROM level_progression) "
+            "SELECT * "
+            "FROM complete_aggregate "
+            "WHERE complete_duration IS NOT NULL "
+            "ORDER BY complete_duration DESC"
+        )
+
+        stats['aggregates']['highest']['complete_duration'] = complete_durations[:3]
+        stats['aggregates']['lowest']['complete_duration'] = complete_durations[-3:]
+        stats['aggregates']['lowest']['complete_duration'].reverse()
+
+        return stats
 
     def _analyze_assignments(self):
+        # TODO: Query reviews for more data.
         pass
 
     def _analyze_reviews(self):
