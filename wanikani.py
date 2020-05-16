@@ -16,7 +16,7 @@ class WaniKaniClient:
     """
     API_URI = 'https://api.wanikani.com/v2/'
 
-    def __init__(self, api_key):
+    def __init__(self, api_key: str):
         self.__auth_header = {
             'Authorization': f'Bearer {api_key}'
         }

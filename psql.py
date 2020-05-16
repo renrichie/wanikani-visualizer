@@ -8,7 +8,7 @@ from typing import Any
 class PostgresClient:
     """
     A wrapper client for Postgres.
-    The intention of this class is to easily allow mocking when testing.
+    The intention of this class is to easily allow mocking of the actual connection when testing this class.
 
     Parameters
     ----------
@@ -16,10 +16,14 @@ class PostgresClient:
         The Postgres database name.
     user : str
         The Postgres user.
-    password: str
+    password : str
         The password for the user.
+    host : str
+        The database host - defaults to localhost.
+    port : str
+        The port to connect on - defaults to 5432.
     """
-    def __init__(self, dbname: str, user: str, password: str, host='localhost', port='5432'):
+    def __init__(self, dbname: str, user: str, password: str, host: str = 'localhost', port: str = '5432'):
         self._connection = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
         logging.basicConfig(filename=f"logs/{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
