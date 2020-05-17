@@ -180,6 +180,7 @@ class Analyzer:
 
             if not use_cached_values:
                 self._db.execute('UPDATE account SET last_queried = %s WHERE id = %s', (current_time, user_id))
+                self._db.commit()
 
             self._cache[user_id] = use_cached_values  # Use cached data for 10 minutes to prevent unnecessary load.
 
@@ -189,6 +190,7 @@ class Analyzer:
             'INSERT INTO account (level, username, last_queried) VALUES (%s, %s, %s) RETURNING id',
             (user_info['level'], username, current_time)
         )
+        self._db.commit()
 
         self._cache[user_id] = False
 
@@ -227,6 +229,8 @@ class Analyzer:
 
             print(f'ID: {id:>10} | Level: {level:>2} | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
 
+        self._db.commit()
+
     def _process_subjects(self, subjects: dict):
         """
         Processes all WaniKani subjects and stores it in the database to be easily accessible.
@@ -256,6 +260,8 @@ class Analyzer:
                 'INSERT INTO subject (id, level, type, image_url, characters) VALUES (%s, %s, %s, %s, %s)',
                 (subject['id'], subject['data']['level'], subject['object'], character_image, subject['data']['characters'] or '[Radical]')
             )
+
+        self._db.commit()
 
     def _process_assignments(self, user_id: int, assignments: dict):
         """
@@ -301,6 +307,8 @@ class Analyzer:
 
             print(f'ID: {id:>10} | Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
 
+        self._db.commit()
+
     def _process_srs_stages(self, stages: dict):
         """
         Processes all WaniKani SRS stages and stores it in the database to be easily accessible.
@@ -321,6 +329,8 @@ class Analyzer:
                 'INSERT INTO srs_stage (id, name) VALUES (%s, %s)',
                 (stage['srs_stage'], stage['srs_stage_name'])
             )
+
+        self._db.commit()
 
     def _process_reviews(self, user_id: int, reviews: dict):
         """
@@ -355,6 +365,8 @@ class Analyzer:
             )
 
             print(f'ID: {id:>10} | Assignment ID: {assignment_id:>10} | Starting stage: {starting_srs_stage:>2} | Ending stage: {ending_srs_stage:>2} | Incorrect meaning answers: {incorrect_meaning_answers:>4} | Incorrect reading answers: {incorrect_reading_answers:>4}')
+
+        self._db.commit()
 
     def _analyze_level_progressions(self, user_id: int):
         """

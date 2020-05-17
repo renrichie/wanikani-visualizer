@@ -67,7 +67,6 @@ class PostgresClient:
             self._connection.rollback()
             raise e
         finally:
-            self._connection.commit()
             cursor.close()
 
         return retval
@@ -185,6 +184,21 @@ class PostgresClient:
             self.execute(update_sql, update_args)
         else:
             self.execute(insert_sql, insert_args)
+
+    def commit(self):
+        """
+        Commits the changes to the database.
+
+        Returns
+        -------
+        None
+
+        """
+        try:
+            self._connection.commit()
+        except Exception as e:
+            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            raise e
 
 
 if __name__ == '__main__':
