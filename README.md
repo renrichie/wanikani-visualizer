@@ -9,6 +9,7 @@ This is a work in progress.
 - [ ] Develop a UI.
 ### Backend
 - [ ] Use locks to prevent simultaneous runs.
+- [ ] Use a queue for asynchronous support and better response time handling.
 - [ ] Rate limit the whole application as per WaniKani guidelines.
 - [ ] Add getters to populate the UI with data.
 - [ ] Add asymmetric encryption to handle API keys from frontend to backend.
