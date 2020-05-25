@@ -19,4 +19,4 @@ This is a work in progress.
 - [ ] Add documentation that explains what the program does and how.
   
 ## Nice to Have
-- [ ] Rewrite database client to use fluid syntax.
+- [ ] Rewrite to use an ORM.
