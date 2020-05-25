@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block app_content %}
+    {% if form %}
+    <div class="h-100 d-flex justify-content-center align-items-center">
+        <div>
+            <form action="" method="post">
+                {{ form.hidden_tag() }}
+                <p>
+                    {{ form.api_key.label }}<br>
+                    {{ form.api_key(size=32) }}<br>
+                    {% for error in form.api_key.errors %}
+                    <span style="color: red;">[{{ error }}]</span>
+                    {% endfor %}
+                </p>
+                <p>{{ form.submit() }}</p>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+{% endblock %}

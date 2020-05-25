@@ -4,9 +4,6 @@ import pprint
 from datetime import datetime
 from typing import Union
 
-from wanikani import WaniKaniClient, DATE_FORMAT
-from psql import PostgresClient
-
 
 class Analyzer:
     """
@@ -24,7 +21,6 @@ class Analyzer:
         self._client = wanikani
         self._db = db
         self._cache = {}
-        logging.basicConfig(filename=f"logs/{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
     def analyze_user_info(self) -> dict:
         """
@@ -44,7 +40,7 @@ class Analyzer:
 
         # Query the API for newer info if we're past our 10 minute cache time or if the data doesn't exist.
         if not self._cache[id]:
-            logging.debug(f'{datetime.now()} | Processing new data...')
+            logging.info('Processing new data...')
             print('======== LEVEL PROGRESSION DATA ========')
 
             for page in self._client.get_level_progressions():
@@ -84,7 +80,7 @@ class Analyzer:
         None
 
         """
-        current_time = datetime.now()
+        current_time = datetime.utcnow()
 
         # Oldest record can be determined by looking at the create dates if any records exist.
         # If there are no records, then the current time would be the oldest since we are about to make one.
@@ -94,8 +90,8 @@ class Analyzer:
         time_elapsed_since_first_query = self._calculate_time_delta(old_time, current_time)
 
         if time_elapsed_since_first_query >= (60 * 60 * 24 * 7):
-            logging.debug(f'{datetime.now()} | Time elapsed since first query: {time_elapsed_since_first_query} seconds')
-            logging.debug(f'{datetime.now()} | Clearing stale data...')
+            logging.info(f'Time elapsed since first query: {time_elapsed_since_first_query} seconds')
+            logging.info('Clearing stale data...')
             self._db.clear_tables(
                 ['review', 'assignment', 'level_progression', 'srs_stage', 'subject', 'account']
             )
@@ -111,12 +107,12 @@ class Analyzer:
         """
         # Only need to populate the subjects once.
         if self._db.query_one('SELECT COUNT(*) FROM subject')['count'] == 0:
-            logging.debug(f'{datetime.now()} | Processing subject info...')
+            logging.info('Processing subject info...')
             for page in self._client.get_subjects():
                 self._process_subjects(subjects=page)
 
         if self._db.query_one('SELECT COUNT(*) FROM srs_stage')['count'] == 0:
-            logging.debug(f'{datetime.now()} | Processing SRS stage info...')
+            logging.info('Processing SRS stage info...')
             self._process_srs_stages(stages=self._client.get_srs_stages())  # No need to paginate since there are so few.
 
     def _calculate_time_delta(self, first_date: Union[str, datetime], second_date: Union[str, datetime]) -> Union[float, None]:
@@ -170,7 +166,7 @@ class Analyzer:
             f"SELECT id, username, level, last_queried FROM account WHERE username = '{username}'"
         )
 
-        current_time = datetime.now()
+        current_time = datetime.utcnow()
 
         if existing_user:
             user_id = existing_user['id']
@@ -684,19 +680,26 @@ def pretty_print(data):
 
 
 if __name__ == '__main__':
+    import os
+
     api_key = None
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    secret_file = os.path.join(basedir, 'secret.json')
 
     try:
-        with open('secret.json', 'r') as file:
+        with open(secret_file, 'r') as file:
             try:
                 api_key = json.load(file)['api_key']
-                print('API key loaded.\n')
+                logging.debug('API key loaded.\n')
             except Exception as e:
-                logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+                logging.critical(f'ERROR: {str(e)}')
                 raise SystemExit(f'An error occurred while loading the JSON: {e}')
     except IOError as e:
-        logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+        logging.critical(f'ERROR: {str(e)}')
         raise SystemExit('Unable to load the API key.')
+
+    from wanikani import WaniKaniClient, DATE_FORMAT
+    from psql import PostgresClient
 
     client = WaniKaniClient(api_key)
     db = PostgresClient(dbname='postgres', user='postgres', password='postgres')
@@ -712,13 +715,13 @@ if __name__ == '__main__':
             "INSERT INTO level_progression "
             "(id, level, user_id, started_at, passed_at, completed_at) "
             "VALUES (%s, %s, %s, %s, %s, %s)",
-            (404, 1, id, datetime.now(), datetime.now(), datetime.now())
+            (404, 1, id, datetime.utcnow(), datetime.utcnow(), datetime.utcnow())
         )
         db.execute(
             "INSERT INTO assignment "
             "(id, user_id, started_at, passed_at, burned_at, srs_stage, subject_id) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (404, id, datetime.now(), datetime.now(), datetime.now(), 1, 404)
+            (404, id, datetime.utcnow(), datetime.utcnow(), datetime.utcnow(), 1, 404)
         )
         db.execute(
             "INSERT INTO review "

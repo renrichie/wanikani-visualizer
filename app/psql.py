@@ -25,14 +25,13 @@ class PostgresClient:
     """
     def __init__(self, dbname: str, user: str, password: str, host: str = 'localhost', port: str = '5432'):
         self._connection = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
-        logging.basicConfig(filename=f"logs/{datetime.today().strftime('%Y-%m-%d')}.log", level=logging.DEBUG)
 
     def __del__(self):
         # Close the connection for the user if they forgot to.
         try:
             self._connection.close()
         except Exception as e:
-            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            logging.critical(f'ERROR: {str(e)}')
 
     def execute(self, sql: str, args: tuple = ()) -> Any:
         """
@@ -63,7 +62,7 @@ class PostgresClient:
             except:
                 pass  # No return value was designated in the SQL probably, so just ignore it.
         except Exception as e:
-            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            logging.critical(f'ERROR: {str(e)}')
             self._connection.rollback()
             raise e
         finally:
@@ -93,7 +92,7 @@ class PostgresClient:
             cursor.execute(sql)
             values = cursor.fetchall()
         except Exception as e:
-            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            logging.critical(f'ERROR: {str(e)}')
             raise e
         finally:
             cursor.close()
@@ -122,7 +121,7 @@ class PostgresClient:
             cursor.execute(sql)
             values = cursor.fetchone()
         except Exception as e:
-            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            logging.critical(f'ERROR: {str(e)}')
             raise e
         finally:
             cursor.close()
@@ -197,7 +196,7 @@ class PostgresClient:
         try:
             self._connection.commit()
         except Exception as e:
-            logging.debug(f'{datetime.now()} | ERROR: {str(e)}')
+            logging.critical(f'ERROR: {str(e)}')
             raise e
 
 

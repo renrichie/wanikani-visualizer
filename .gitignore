@@ -2,4 +2,4 @@
 __pycache__/
 .idea/
 venv/
-secret.json
+app/secret.json
