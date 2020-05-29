@@ -33,43 +33,6 @@ class PostgresClient:
         except Exception as e:
             logging.critical(f'ERROR: {str(e)}')
 
-    def execute(self, sql: str, args: tuple = ()) -> Any:
-        """
-        Performs SQL statements.
-        If there are no arguments, pass in an empty tuple.
-
-        Parameters
-        ----------
-        sql : str
-            The SQL statement to perform.
-        args : tuple
-            The arguments for the statement.
-
-        Returns
-        -------
-        Any
-            Whatever return value is specified in the SQL or None if not.
-
-        """
-        retval = None
-
-        cursor = self._connection.cursor()
-
-        try:
-            cursor.execute(sql, args)
-            try:
-                retval = cursor.fetchone()[0]
-            except:
-                pass  # No return value was designated in the SQL probably, so just ignore it.
-        except Exception as e:
-            logging.critical(f'ERROR: {str(e)}')
-            self._connection.rollback()
-            raise e
-        finally:
-            cursor.close()
-
-        return retval
-
     def query_all(self, sql: str) -> list:
         """
         Performs the SQL query and returns all rows in an associative format.
@@ -154,50 +117,6 @@ class PostgresClient:
 
         """
         self.execute(f"TRUNCATE {', '.join(tables)}")
-
-    def process_row(self, exists_query: str, insert_sql: str, update_sql: str, insert_args: tuple, update_args: tuple):
-        """
-        Creates the row if it doesn't already exist, otherwise it updates it.
-
-        Parameters
-        ----------
-        exists_query : str
-            The query to use to check row existence.
-        insert_sql : str
-            The INSERT statement to execute if the row does not exist.
-        update_sql : str
-            The UPDATE statement to execute if the row already exists.
-        insert_args : tuple
-            The arguments to execute the INSERT with.
-        update_args : tuple
-            The arguments to execute the UPDATE with.
-
-        Returns
-        -------
-        None
-
-        """
-        existing_record = self.query_one(exists_query)['exists']
-
-        if existing_record:
-            self.execute(update_sql, update_args)
-        else:
-            self.execute(insert_sql, insert_args)
-
-    def commit(self):
-        """
-        Commits the changes to the database.
-
-        Returns
-        -------
-        None
-
-        """
-        try:
-            self._connection.commit()
-        except Exception as e:
-            logging.critical(f'ERROR: {str(e)}')
-            raise e
 
 
 if __name__ == '__main__':

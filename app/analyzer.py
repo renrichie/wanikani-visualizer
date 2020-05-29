@@ -5,6 +5,10 @@ from datetime import datetime
 from typing import Union
 
 
+from app import database
+from app.models import Account, LevelProgression, Assignment, Stage, Review, Subject
+
+
 class Analyzer:
     """
     This is the main application.
@@ -46,15 +50,21 @@ class Analyzer:
             for page in self._client.get_level_progressions():
                 self._process_level_progressions(user_id=id, progressions=page)
 
+            database.session.flush()
+
             print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
             for page in self._client.get_assignments():
                 self._process_assignments(user_id=id, assignments=page)
 
+            database.session.flush()
+
             print('\n======== REVIEW DATA ========')
 
             for page in self._client.get_reviews():
                 self._process_reviews(user_id=id, reviews=page)
+
+            database.session.commit()
 
         user_stats = {
             'user': {
@@ -93,7 +103,7 @@ class Analyzer:
             logging.info(f'Time elapsed since first query: {time_elapsed_since_first_query} seconds')
             logging.info('Clearing stale data...')
             self._db.clear_tables(
-                ['review', 'assignment', 'level_progression', 'srs_stage', 'subject', 'account']
+                ['review', 'assignment', 'level_progression', 'stage', 'subject', 'account']
             )
 
     def _initialize_static_info(self):
@@ -111,9 +121,11 @@ class Analyzer:
             for page in self._client.get_subjects():
                 self._process_subjects(subjects=page)
 
-        if self._db.query_one('SELECT COUNT(*) FROM srs_stage')['count'] == 0:
+        if self._db.query_one('SELECT COUNT(*) FROM stage')['count'] == 0:
             logging.info('Processing SRS stage info...')
             self._process_srs_stages(stages=self._client.get_srs_stages())  # No need to paginate since there are so few.
+
+        database.session.commit()
 
     def _calculate_time_delta(self, first_date: Union[str, datetime], second_date: Union[str, datetime]) -> Union[float, None]:
         """
@@ -162,35 +174,33 @@ class Analyzer:
         print(f'Username: {username}')
         print(f"Level: {user_info['level']}\n")
 
-        existing_user = self._db.query_one(
-            f"SELECT id, username, level, last_queried FROM account WHERE username = '{username}'"
-        )
+        user = Account.query.filter_by(username=username).first()
 
         current_time = datetime.utcnow()
 
-        if existing_user:
-            user_id = existing_user['id']
-            last_queried_time = existing_user['last_queried']
+        if user:
+            user_id = user.id
+            last_queried_time = user.last_queried
             time_since_last_query = self._calculate_time_delta(last_queried_time, current_time) or 0
             use_cached_values = time_since_last_query < (10 * 60)
 
             if not use_cached_values:
-                self._db.execute('UPDATE account SET last_queried = %s WHERE id = %s', (current_time, user_id))
-                self._db.commit()
+                user.last_queried = current_time
+                database.session.commit()
 
             self._cache[user_id] = use_cached_values  # Use cached data for 10 minutes to prevent unnecessary load.
 
             return user_id
 
-        user_id = self._db.execute(
-            'INSERT INTO account (level, username, last_queried) VALUES (%s, %s, %s) RETURNING id',
-            (user_info['level'], username, current_time)
-        )
-        self._db.commit()
+        user = Account()
+        user.level = user_info['level']
+        user.username = username
+        database.session.add(user)
+        database.session.commit()
 
-        self._cache[user_id] = False
+        self._cache[user.id] = False
 
-        return user_id
+        return user.id
 
     def _process_level_progressions(self, user_id: int, progressions: dict):
         """
@@ -215,17 +225,23 @@ class Analyzer:
             pass_date = level_prog['data']['passed_at']
             end_date = level_prog['data']['completed_at']
 
-            self._db.process_row(
-                exists_query=f'SELECT EXISTS(SELECT 1 FROM level_progression WHERE id = {id}) AS "exists"',
-                update_sql='UPDATE level_progression SET started_at = %s, passed_at = %s, completed_at = %s WHERE id = %s',
-                update_args=(start_date, pass_date, end_date, id),
-                insert_sql='INSERT INTO level_progression (id, level, user_id, started_at, passed_at, completed_at) VALUES (%s, %s, %s, %s, %s, %s)',
-                insert_args=(id, level, user_id, start_date, pass_date, end_date)
-            )
+            lvl = LevelProgression.query.filter_by(id=id).first()
+
+            if lvl:
+                lvl.started_at = start_date
+                lvl.passed_at = pass_date
+                lvl.completed_at = end_date
+            else:
+                lvl = LevelProgression()
+                lvl.id = id
+                lvl.level = level
+                lvl.user_id = user_id
+                lvl.started_at = start_date
+                lvl.passed_at = pass_date
+                lvl.completed_at = end_date
+                database.session.add(lvl)
 
             print(f'ID: {id:>10} | Level: {level:>2} | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
-
-        self._db.commit()
 
     def _process_subjects(self, subjects: dict):
         """
@@ -252,12 +268,13 @@ class Analyzer:
                         character_image = image['url']
                         break
 
-            self._db.execute(
-                'INSERT INTO subject (id, level, type, image_url, characters) VALUES (%s, %s, %s, %s, %s)',
-                (subject['id'], subject['data']['level'], subject['object'], character_image, subject['data']['characters'] or '[Radical]')
-            )
-
-        self._db.commit()
+            sbjt = Subject()
+            sbjt.id = subject['id']
+            sbjt.level = subject['data']['level']
+            sbjt.type = subject['object']
+            sbjt.image_url = character_image
+            sbjt.characters = subject['data']['characters'] or '[Radical]'
+            database.session.add(sbjt)
 
     def _process_assignments(self, user_id: int, assignments: dict):
         """
@@ -285,13 +302,23 @@ class Analyzer:
             pass_date = assignment['data']['passed_at']
             end_date = assignment['data']['burned_at']
 
-            self._db.process_row(
-                exists_query=f'SELECT EXISTS(SELECT 1 FROM assignment WHERE id = {id}) AS "exists"',
-                update_sql='UPDATE assignment SET srs_stage = %s, started_at = %s, passed_at = %s, burned_at = %s WHERE id = %s',
-                update_args=(srs_stage_id, start_date, pass_date, end_date, id),
-                insert_sql='INSERT INTO assignment (id, user_id, started_at, passed_at, burned_at, srs_stage, subject_id) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                insert_args=(id, user_id, start_date, pass_date, end_date, srs_stage_id, subject_id)
-            )
+            asmt = Assignment.query.filter_by(id=id).first()
+
+            if asmt:
+                asmt.srs_stage = srs_stage_id
+                asmt.started_at = start_date
+                asmt.passed_at = pass_date
+                asmt.burned_at = end_date
+            else:
+                asmt = Assignment()
+                asmt.id = id
+                asmt.user_id = user_id
+                asmt.srs_stage = srs_stage_id
+                asmt.started_at = start_date
+                asmt.passed_at = pass_date
+                asmt.burned_at = end_date
+                asmt.subject_id = subject_id
+                database.session.add(asmt)
 
             # Hack to properly pad UTF-8 Japanese characters.
             # Python does not handle multi-byte characters that well, especially considering full vs half width.
@@ -302,8 +329,6 @@ class Analyzer:
                 subject = f'{subject:>16}'
 
             print(f'ID: {id:>10} | Subject ID: {subject_id:>8} | Subject: {subject} | SRS stage: {srs_stage_name:>14} ({srs_stage_id}) | Start date: {start_date or "N/A":>27} | Pass date: {pass_date or "N/A":>27} | Completion date: {end_date or "N/A":>27}')
-
-        self._db.commit()
 
     def _process_srs_stages(self, stages: dict):
         """
@@ -321,12 +346,10 @@ class Analyzer:
 
         """
         for stage in stages['data']:
-            self._db.execute(
-                'INSERT INTO srs_stage (id, name) VALUES (%s, %s)',
-                (stage['srs_stage'], stage['srs_stage_name'])
-            )
-
-        self._db.commit()
+            srs_stage = Stage()
+            srs_stage.id = stage['srs_stage']
+            srs_stage.name = stage['srs_stage_name']
+            database.session.add(srs_stage)
 
     def _process_reviews(self, user_id: int, reviews: dict):
         """
@@ -352,17 +375,25 @@ class Analyzer:
             incorrect_meaning_answers = review['data']['incorrect_meaning_answers']
             incorrect_reading_answers = review['data']['incorrect_reading_answers']
 
-            self._db.process_row(
-                exists_query=f'SELECT EXISTS(SELECT 1 FROM review WHERE id = {id}) AS "exists"',
-                update_sql='UPDATE review SET starting_srs_stage = %s, ending_srs_stage = %s, incorrect_meaning_answers = %s, incorrect_reading_answers = %s WHERE id = %s',
-                update_args=(starting_srs_stage, ending_srs_stage, incorrect_meaning_answers, incorrect_reading_answers, id),
-                insert_sql='INSERT INTO review (id, user_id, assignment_id, starting_srs_stage, ending_srs_stage, incorrect_meaning_answers, incorrect_reading_answers) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                insert_args=(id, user_id, assignment_id, starting_srs_stage, ending_srs_stage, incorrect_meaning_answers, incorrect_reading_answers)
-            )
+            rvw = Review.query.filter_by(id=id).first()
+
+            if rvw:
+                rvw.starting_srs_stage = starting_srs_stage
+                rvw.ending_srs_stage = ending_srs_stage
+                rvw.incorrect_meaning_answers = incorrect_meaning_answers
+                rvw.incorrect_reading_answers = incorrect_reading_answers
+            else:
+                rvw = Review()
+                rvw.id = id
+                rvw.user_id = user_id
+                rvw.assignment_id = assignment_id
+                rvw.starting_srs_stage = starting_srs_stage
+                rvw.ending_srs_stage = ending_srs_stage
+                rvw.incorrect_meaning_answers = incorrect_meaning_answers
+                rvw.incorrect_reading_answers = incorrect_reading_answers
+                database.session.add(rvw)
 
             print(f'ID: {id:>10} | Assignment ID: {assignment_id:>10} | Starting stage: {starting_srs_stage:>2} | Ending stage: {ending_srs_stage:>2} | Incorrect meaning answers: {incorrect_meaning_answers:>4} | Incorrect reading answers: {incorrect_reading_answers:>4}')
-
-        self._db.commit()
 
     def _analyze_level_progressions(self, user_id: int):
         """
@@ -381,13 +412,17 @@ class Analyzer:
         """
         stats = {}
 
-        total_query_base = f'SELECT COUNT(*) FROM level_progression WHERE user_id = {user_id}'
+        user = Account.query.filter_by(id=user_id).first()
+
+        if user is None:
+            raise Exception("User not found.")
+
         stats['totals'] = {
-            'total': self._db.query_one(total_query_base),
+            'total': user.levels.count(),
             'completion': {
-                'started': self._db.query_one(f'{total_query_base} AND passed_at IS NULL'),
-                'passed': self._db.query_one(f'{total_query_base} AND passed_at IS NOT NULL'),
-                'completed': self._db.query_one(f'{total_query_base} AND completed_at IS NOT NULL')
+                'started': user.levels.filter(LevelProgression.passed_at.is_(None)).count(),
+                'passed': user.levels.filter(LevelProgression.passed_at.isnot(None)).count(),
+                'completed': user.levels.filter(LevelProgression.completed_at.isnot(None)).count()
             }
         }
 
@@ -479,7 +514,7 @@ class Analyzer:
             },
             'stage': self._db.query_all(
                 "SELECT a.srs_stage, s.name, COUNT(*) "
-                "FROM assignment a, srs_stage s "
+                "FROM assignment a, stage s "
                 f"WHERE a.user_id = {user_id} AND a.srs_stage = s.id "
                 "GROUP BY a.srs_stage, s.name "
                 "ORDER BY a.srs_stage ASC"
@@ -583,7 +618,7 @@ class Analyzer:
             'total': self._db.query_one(total_query_base),
             'stage': self._db.query_all(  # The number of reviews required per stage - should be graphed.
                 "SELECT r.starting_srs_stage, s.name, COUNT(*) "
-                "FROM review r, assignment a, srs_stage s "
+                "FROM review r, assignment a, stage s "
                 f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND r.starting_srs_stage = s.id "
                 "GROUP BY r.starting_srs_stage, s.name "
                 "ORDER BY r.starting_srs_stage ASC"
@@ -704,33 +739,6 @@ if __name__ == '__main__':
     client = WaniKaniClient(api_key)
     db = PostgresClient(dbname='postgres', user='postgres', password='postgres')
     analyzer = Analyzer(wanikani=client, db=db)
-
-    # Insert some data belong to a fake user to make sure the queries don't pull irrelevant data.
-    try:
-        id = db.execute(
-            "INSERT INTO account (level, username) VALUES (%s, %s) RETURNING id",
-            (3, 'bob')
-        )
-        db.execute(
-            "INSERT INTO level_progression "
-            "(id, level, user_id, started_at, passed_at, completed_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (404, 1, id, datetime.utcnow(), datetime.utcnow(), datetime.utcnow())
-        )
-        db.execute(
-            "INSERT INTO assignment "
-            "(id, user_id, started_at, passed_at, burned_at, srs_stage, subject_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (404, id, datetime.utcnow(), datetime.utcnow(), datetime.utcnow(), 1, 404)
-        )
-        db.execute(
-            "INSERT INTO review "
-            "(id, user_id, assignment_id, starting_srs_stage, ending_srs_stage, incorrect_meaning_answers, incorrect_reading_answers) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (404, id, 404, 1, 5, 10, 20)
-        )
-    except:
-        pass
 
     try:
         analyzer.analyze_user_info()
