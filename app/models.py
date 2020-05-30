@@ -1,10 +1,11 @@
-from app import app, database
+from app import database
 
 
 class Account(database.Model):
     id = database.Column(database.Integer, primary_key=True)
-    level = database.Column(database.Integer)
+    level = database.Column(database.Integer, nullable=False)
     username = database.Column(database.String(16), unique=True, nullable=False)
+    start_date = database.Column(database.DateTime, nullable=False)
     last_queried = database.Column(database.DateTime, server_default=database.func.now(), server_onupdate=database.func.now())
     create_date = database.Column(database.DateTime, server_default=database.func.now())
     modify_date = database.Column(database.DateTime, server_onupdate=database.func.now())
@@ -35,7 +36,7 @@ class Assignment(database.Model):
 
 class LevelProgression(database.Model):
     id = database.Column(database.Integer, primary_key=True, autoincrement=False)
-    level = database.Column(database.Integer)
+    level = database.Column(database.Integer, nullable=False)
     user_id = database.Column(database.Integer, database.ForeignKey('account.id'), nullable=False)
     started_at = database.Column(database.DateTime)
     passed_at = database.Column(database.DateTime)
@@ -74,10 +75,10 @@ class Stage(database.Model):
 
 class Subject(database.Model):
     id = database.Column(database.Integer, primary_key=True, autoincrement=False)
-    level = database.Column(database.Integer)
-    type = database.Column(database.String(10))
-    image_url = database.Column(database.String(256))
-    characters = database.Column(database.String(64))
+    level = database.Column(database.Integer, nullable=False)
+    type = database.Column(database.String(10), nullable=False)
+    image_url = database.Column(database.String(256))  # Only radicals have images defined.
+    characters = database.Column(database.String(64), nullable=False)
     create_date = database.Column(database.DateTime, server_default=database.func.now())
     modify_date = database.Column(database.DateTime, server_onupdate=database.func.now())
 
