@@ -39,42 +39,41 @@ class Analyzer:
         self._clean_stale_data()
         self._initialize_static_info()
 
-        user = self._client.get_user()
-        id = self._process_user(user_info=user)
+        user = self._process_user(user_info=self._client.get_user())
 
         # Query the API for newer info if we're past our 10 minute cache time or if the data doesn't exist.
-        if not self._cache[id]:
+        if not self._cache[user.id]:
             logging.info('Processing new data...')
             print('======== LEVEL PROGRESSION DATA ========')
 
             for page in self._client.get_level_progressions():
-                self._process_level_progressions(user_id=id, progressions=page)
+                self._process_level_progressions(user=user, progressions=page)
 
             database.session.flush()
 
             print('\n======== ASSIGNMENT PROGRESS DATA ========')
 
             for page in self._client.get_assignments():
-                self._process_assignments(user_id=id, assignments=page)
+                self._process_assignments(user=user, assignments=page)
 
             database.session.flush()
 
             print('\n======== REVIEW DATA ========')
 
             for page in self._client.get_reviews():
-                self._process_reviews(user_id=id, reviews=page)
+                self._process_reviews(user=user, reviews=page)
 
             database.session.commit()
 
         user_stats = {
             'user': {
-                'level': user['level'],
-                'username': user['username'],
-                'start_date': user['started_at']
+                'level': user.level,
+                'username': user.username,
+                'start_date': user.start_date
             },
-            'level_progressions': self._analyze_level_progressions(user_id=id),
-            'assignments': self._analyze_assignments(user_id=id),
-            'reviews': self._analyze_reviews(user_id=id)
+            'level_progressions': self._analyze_level_progressions(user=user),
+            'assignments': self._analyze_assignments(user=user),
+            'reviews': self._analyze_reviews(user=user)
         }
 
         pretty_print(user_stats)
@@ -165,8 +164,8 @@ class Analyzer:
 
         Returns
         -------
-        int
-            The ID of the user in the database.
+        Account
+            The user's Account ORM object.
 
         """
         username = user_info['username']
@@ -179,7 +178,6 @@ class Analyzer:
         current_time = datetime.utcnow()
 
         if user:
-            user_id = user.id
             last_queried_time = user.last_queried
             time_since_last_query = self._calculate_time_delta(last_queried_time, current_time) or 0
             use_cached_values = time_since_last_query < (10 * 60)
@@ -188,28 +186,29 @@ class Analyzer:
                 user.last_queried = current_time
                 database.session.commit()
 
-            self._cache[user_id] = use_cached_values  # Use cached data for 10 minutes to prevent unnecessary load.
+            self._cache[user.id] = use_cached_values  # Use cached data for 10 minutes to prevent unnecessary load.
 
-            return user_id
+            return user
 
         user = Account()
         user.level = user_info['level']
         user.username = username
+        user.start_date = user_info['started_at']
         database.session.add(user)
         database.session.commit()
 
         self._cache[user.id] = False
 
-        return user.id
+        return user
 
-    def _process_level_progressions(self, user_id: int, progressions: dict):
+    def _process_level_progressions(self, user: Account, progressions: dict):
         """
         Processes the user's WaniKani level progression info and stores it in the database to be easily accessible.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
         progressions : dict
             The JSON containing the level progression info.
 
@@ -235,7 +234,7 @@ class Analyzer:
                 lvl = LevelProgression()
                 lvl.id = id
                 lvl.level = level
-                lvl.user_id = user_id
+                lvl.user_id = user.id
                 lvl.started_at = start_date
                 lvl.passed_at = pass_date
                 lvl.completed_at = end_date
@@ -276,14 +275,14 @@ class Analyzer:
             sbjt.characters = subject['data']['characters'] or '[Radical]'
             database.session.add(sbjt)
 
-    def _process_assignments(self, user_id: int, assignments: dict):
+    def _process_assignments(self, user: Account, assignments: dict):
         """
         Processes the user's WaniKani assignments and stores it in the database to be easily accessible.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
         assignments : dict
             The JSON containing the review info.
 
@@ -295,7 +294,7 @@ class Analyzer:
         for assignment in assignments['data']:
             id = assignment['id']
             subject_id = assignment['data']['subject_id']
-            subject = self._db.query_one(f'SELECT characters FROM subject WHERE id = {subject_id}')['characters']
+            subject = Subject.query.filter_by(id=subject_id).first().characters
             srs_stage_name = assignment['data']['srs_stage_name']
             srs_stage_id = assignment['data']['srs_stage']
             start_date = assignment['data']['started_at']
@@ -312,7 +311,7 @@ class Analyzer:
             else:
                 asmt = Assignment()
                 asmt.id = id
-                asmt.user_id = user_id
+                asmt.user_id = user.id
                 asmt.srs_stage = srs_stage_id
                 asmt.started_at = start_date
                 asmt.passed_at = pass_date
@@ -351,14 +350,14 @@ class Analyzer:
             srs_stage.name = stage['srs_stage_name']
             database.session.add(srs_stage)
 
-    def _process_reviews(self, user_id: int, reviews: dict):
+    def _process_reviews(self, user: Account, reviews: dict):
         """
         Processes the user's WaniKani reviews and stores it in the database to be easily accessible.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
         reviews : dict
             The JSON containing the review info.
 
@@ -385,7 +384,7 @@ class Analyzer:
             else:
                 rvw = Review()
                 rvw.id = id
-                rvw.user_id = user_id
+                rvw.user_id = user.id
                 rvw.assignment_id = assignment_id
                 rvw.starting_srs_stage = starting_srs_stage
                 rvw.ending_srs_stage = ending_srs_stage
@@ -395,14 +394,14 @@ class Analyzer:
 
             print(f'ID: {id:>10} | Assignment ID: {assignment_id:>10} | Starting stage: {starting_srs_stage:>2} | Ending stage: {ending_srs_stage:>2} | Incorrect meaning answers: {incorrect_meaning_answers:>4} | Incorrect reading answers: {incorrect_reading_answers:>4}')
 
-    def _analyze_level_progressions(self, user_id: int):
+    def _analyze_level_progressions(self, user: Account):
         """
         Performs some simple analytics on the user's level progression data, such as aggregates and totals.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
 
         Returns
         -------
@@ -411,11 +410,6 @@ class Analyzer:
 
         """
         stats = {}
-
-        user = Account.query.filter_by(id=user_id).first()
-
-        if user is None:
-            raise Exception("User not found.")
 
         stats['totals'] = {
             'total': user.levels.count(),
@@ -431,7 +425,7 @@ class Analyzer:
             "DATEDIFF('seconds', started_at, passed_at) AS pass_duration, "
             "DATEDIFF('seconds', started_at, completed_at) AS complete_duration "
             "FROM level_progression "
-            f"WHERE user_id = {user_id} "
+            f"WHERE user_id = {user.id} "
             "ORDER BY level ASC"
         )
 
@@ -441,14 +435,14 @@ class Analyzer:
             "SELECT MEDIAN(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
             "MEDIAN(DATEDIFF('seconds', started_at, completed_at)) AS complete_duration "
             "FROM level_progression "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['averages'] = self._db.query_one(
             "SELECT AVG(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
             "AVG(DATEDIFF('seconds', started_at, completed_at)) AS complete_duration "
             "FROM level_progression "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['highest'] = {}
@@ -459,7 +453,7 @@ class Analyzer:
             "WITH pass_aggregate AS ("
             "SELECT level, DATEDIFF('seconds', started_at, passed_at) AS pass_duration "
             "FROM level_progression "
-            f"WHERE user_id = {user_id}) "
+            f"WHERE user_id = {user.id}) "
             "SELECT * "
             "FROM pass_aggregate "
             "WHERE pass_duration IS NOT NULL "
@@ -474,7 +468,7 @@ class Analyzer:
             "WITH complete_aggregate AS ("
             "SELECT level, DATEDIFF('seconds', started_at, completed_at) AS complete_duration "
             "FROM level_progression "
-            f"WHERE user_id = {user_id}) "
+            f"WHERE user_id = {user.id}) "
             "SELECT * "
             "FROM complete_aggregate "
             "WHERE complete_duration IS NOT NULL "
@@ -487,14 +481,14 @@ class Analyzer:
 
         return stats  # Might need to convert this? lambda obj: str(obj) if isinstance(obj, datetime) else obj
 
-    def _analyze_assignments(self, user_id: int) -> dict:
+    def _analyze_assignments(self, user: Account) -> dict:
         """
         Performs some simple analytics on the user's assignment data, such as aggregates and totals.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
 
         Returns
         -------
@@ -504,32 +498,31 @@ class Analyzer:
         """
         stats = {}
 
-        total_query_base = f'SELECT COUNT(*) FROM assignment WHERE user_id = {user_id}'
         stats['totals'] = {
-            'total': self._db.query_one(total_query_base),
+            'total': user.assignments.count(),
             'completion': {
-                'started': self._db.query_one(f'{total_query_base} AND passed_at IS NULL'),
-                'passed': self._db.query_one(f'{total_query_base} AND passed_at IS NOT NULL'),
-                'completed': self._db.query_one(f'{total_query_base} AND burned_at IS NOT NULL')
+                'started': user.assignments.filter(Assignment.passed_at.is_(None)).count(),
+                'passed': user.assignments.filter(Assignment.passed_at.isnot(None)).count(),
+                'completed': user.assignments.filter(Assignment.burned_at.isnot(None)).count()
             },
             'stage': self._db.query_all(
                 "SELECT a.srs_stage, s.name, COUNT(*) "
                 "FROM assignment a, stage s "
-                f"WHERE a.user_id = {user_id} AND a.srs_stage = s.id "
+                f"WHERE a.user_id = {user.id} AND a.srs_stage = s.id "
                 "GROUP BY a.srs_stage, s.name "
                 "ORDER BY a.srs_stage ASC"
             ),
             'level': self._db.query_all(
                 "SELECT s.level, COUNT(*) "
                 "FROM assignment a, subject s "
-                f"WHERE a.user_id = {user_id} AND a.subject_id = s.id "
+                f"WHERE a.user_id = {user.id} AND a.subject_id = s.id "
                 "GROUP BY s.level "
                 "ORDER BY s.level ASC"
             ),
             'type': self._db.query_all(
                 "SELECT s.type, COUNT(*) "
                 "FROM assignment a, subject s "
-                f"WHERE a.user_id = {user_id} AND a.subject_id = s.id "
+                f"WHERE a.user_id = {user.id} AND a.subject_id = s.id "
                 "GROUP BY s.type"
             )
         }
@@ -540,14 +533,14 @@ class Analyzer:
             "SELECT MEDIAN(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
             "MEDIAN(DATEDIFF('seconds', started_at, burned_at)) AS complete_duration "
             "FROM assignment "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['averages'] = self._db.query_one(
             "SELECT AVG(DATEDIFF('seconds', started_at, passed_at)) AS pass_duration, "
             "AVG(DATEDIFF('seconds', started_at, burned_at)) AS complete_duration "
             "FROM assignment "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['highest'] = {}
@@ -559,7 +552,7 @@ class Analyzer:
             "SELECT s.type, s.characters, s.image_url, "
             "DATEDIFF('seconds', a.started_at, a.passed_at) AS pass_duration "
             "FROM assignment a, subject s "
-            f"WHERE a.user_id = {user_id} AND a.subject_id = s.id) "
+            f"WHERE a.user_id = {user.id} AND a.subject_id = s.id) "
             "SELECT * "
             "FROM pass_aggregate "
             "WHERE pass_duration IS NOT NULL "
@@ -575,7 +568,7 @@ class Analyzer:
             "SELECT s.type, s.characters, s.image_url, "
             "DATEDIFF('seconds', started_at, burned_at) AS complete_duration "
             "FROM assignment a, subject s "
-            f"WHERE user_id = {user_id} AND a.subject_id = s.id) "
+            f"WHERE user_id = {user.id} AND a.subject_id = s.id) "
             "SELECT * "
             "FROM complete_aggregate "
             "WHERE complete_duration IS NOT NULL "
@@ -591,19 +584,19 @@ class Analyzer:
             "DATEDIFF('seconds', a.started_at, a.passed_at) AS pass_duration,"
             "DATEDIFF('seconds', started_at, burned_at) AS complete_duration "
             "FROM assignment a, subject s "
-            f"WHERE a.user_id = {user_id} AND a.subject_id = s.id"
+            f"WHERE a.user_id = {user.id} AND a.subject_id = s.id"
         )
 
         return stats
 
-    def _analyze_reviews(self, user_id: int) -> dict:
+    def _analyze_reviews(self, user: Account) -> dict:
         """
         Performs some simple analytics on the user's review data, such as aggregates and totals.
 
         Parameters
         ----------
-        user_id : int
-            The user's unique ID in the database, not WaniKani's.
+        user : Account
+            The user's Account ORM object.
 
         Returns
         -------
@@ -613,27 +606,26 @@ class Analyzer:
         """
         stats = {}
 
-        total_query_base = f'SELECT COUNT(*) FROM review WHERE user_id = {user_id}'
         stats['totals'] = {
-            'total': self._db.query_one(total_query_base),
+            'total': user.reviews.count(),
             'stage': self._db.query_all(  # The number of reviews required per stage - should be graphed.
                 "SELECT r.starting_srs_stage, s.name, COUNT(*) "
                 "FROM review r, assignment a, stage s "
-                f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND r.starting_srs_stage = s.id "
+                f"WHERE a.user_id = {user.id} AND r.user_id = {user.id} AND r.assignment_id = a.id AND r.starting_srs_stage = s.id "
                 "GROUP BY r.starting_srs_stage, s.name "
                 "ORDER BY r.starting_srs_stage ASC"
             ),
             'level': self._db.query_all(
                 "SELECT s.level, COUNT(*) "
                 "FROM review r, assignment a, subject s "
-                f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id "
+                f"WHERE a.user_id = {user.id} AND r.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id "
                 "GROUP BY s.level "
                 "ORDER BY s.level ASC"
             ),
             'type': self._db.query_all(
                 "SELECT s.type, COUNT(*) "
                 "FROM review r, assignment a, subject s "
-                f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id "
+                f"WHERE a.user_id = {user.id} AND r.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id "
                 "GROUP BY s.type"
             ),
             'accuracy': {
@@ -641,14 +633,14 @@ class Analyzer:
                     "SELECT s.type, "
                     "ROUND((1 - (SUM(r.incorrect_reading_answers) * 1.0 / (COUNT(*) + SUM(r.incorrect_reading_answers)))) * 100) AS accuracy "
                     "FROM review r, assignment a, subject s "
-                    f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id AND s.type not like 'radical' "
+                    f"WHERE a.user_id = {user.id} AND r.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id AND s.type not like 'radical' "
                     "GROUP BY s.type"
                 ),
                 'meaning': self._db.query_all(
                     "SELECT s.type, "
                     "ROUND((1 - (SUM(r.incorrect_meaning_answers) * 1.0 / (COUNT(*) + SUM(r.incorrect_meaning_answers)))) * 100) AS accuracy "
                     "FROM review r, assignment a, subject s "
-                    f"WHERE a.user_id = {user_id} AND r.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id "
+                    f"WHERE a.user_id = {user.id} AND r.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id "
                     "GROUP BY s.type"
                 )
             }
@@ -661,7 +653,7 @@ class Analyzer:
             "MEDIAN(incorrect_reading_answers) AS incorrect_readings,"
             "MEDIAN(ending_srs_stage - starting_srs_stage) AS srs_stage_change "
             "FROM review "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['averages'] = self._db.query_one(
@@ -669,7 +661,7 @@ class Analyzer:
             "AVG(incorrect_reading_answers) AS incorrect_readings,"
             "AVG(ending_srs_stage - starting_srs_stage) AS srs_stage_change "
             "FROM review "
-            f"WHERE user_id = {user_id}"
+            f"WHERE user_id = {user.id}"
         )
 
         stats['aggregates']['highest'] = {}
@@ -679,7 +671,7 @@ class Analyzer:
         stats['aggregates']['highest']['incorrect_meaning_answers'] = self._db.query_all(
             "SELECT s.type, s.characters, s.image_url, SUM(r.incorrect_meaning_answers) AS incorrect_meaning_answers "
             "FROM review r, assignment a, subject s "
-            f"WHERE r.user_id = {user_id} AND a.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id "
+            f"WHERE r.user_id = {user.id} AND a.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id "
             "GROUP BY s.id "
             "ORDER BY incorrect_meaning_answers DESC "
             "LIMIT 3"
@@ -688,7 +680,7 @@ class Analyzer:
         stats['aggregates']['highest']['incorrect_reading_answers'] = self._db.query_all(
             "SELECT s.type, s.characters, s.image_url, SUM(r.incorrect_reading_answers) AS incorrect_reading_answers "
             "FROM review r, assignment a, subject s "
-            f"WHERE r.user_id = {user_id} AND a.user_id = {user_id} AND r.assignment_id = a.id AND a.subject_id = s.id "
+            f"WHERE r.user_id = {user.id} AND a.user_id = {user.id} AND r.assignment_id = a.id AND a.subject_id = s.id "
             "GROUP BY s.id "
             "ORDER BY incorrect_reading_answers DESC "
             "LIMIT 3"
