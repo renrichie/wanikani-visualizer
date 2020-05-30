@@ -21,12 +21,8 @@ def index():
 
         form.api_key.data = ''
 
-        # TODO: This should be a return statement but will fail due to the result containing floats which you cannot directly JSONify.
-        redirect(url_for('index'))
+        # Just re-render everything at the base URL to circumvent people visiting a separate stats page
+        # before they even start an analysis.
+        return render_template('stats.html', logo=app.config['LOGO'])
 
     return render_template('index.html', form=form, logo=app.config['LOGO'])
-
-
-@app.route('/stats', methods=['GET'])
-def stats():
-    return render_template('stats.html', logo=app.config['LOGO'])
