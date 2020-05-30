@@ -18,7 +18,14 @@
         {% endif %}
         {% endwith %}
 
-        {# application content needs to be provided in the app_content block #}
-        {% block app_content %}{% endblock %}
+        <br><br>
+        {% if logo %}
+        <a href="{{ url_for('index') }}">
+            <img style="margin-left: auto; margin-right: auto; display: block; width: 30%; height: 30%" src="{{ url_for('static', filename=logo) }}" />
+        </a>
+        {% endif %}
+
+        {% block app_content %}
+        {% endblock %}
     </div>
 {% endblock %}

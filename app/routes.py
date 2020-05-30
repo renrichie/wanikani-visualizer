@@ -8,7 +8,6 @@ from .wanikani import WaniKaniClient
 
 
 @app.route('/', methods=['GET', 'POST'])
-@app.route('/index', methods=['GET', 'POST'])
 def index():
     form = AuthenticationForm()
 
@@ -22,6 +21,12 @@ def index():
 
         form.api_key.data = ''
 
+        # TODO: This should be a return statement but will fail due to the result containing floats which you cannot directly JSONify.
         redirect(url_for('index'))
 
-    return render_template('index.html', form=form)
+    return render_template('index.html', form=form, logo=app.config['LOGO'])
+
+
+@app.route('/stats', methods=['GET'])
+def stats():
+    return render_template('stats.html', logo=app.config['LOGO'])
