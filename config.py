@@ -10,4 +10,5 @@ class Config:
     # The image that's displayed at the top of every page.
     # Intentionally not committed to the repo to avoid copyright and trademark issues.
     # Should be located at wanikani-visualizer/app/static/
-    LOGO = 'wanikani.png'
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    LOGO = 'logo.png' if os.path.exists(basedir + '/app/static/logo.png') else None
