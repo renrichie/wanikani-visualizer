@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block app_content %}
+    <br>
+    {% include '_user.html' %}
+    <div class="container-fluid">
+        <div class="accordion" id="wanikaniStatsAccordion">
+            <div class="card">
+                <div class="card-header bg-secondary" id="levelProgressionHeader">
+                    <h2 class="mb-0">
+                        <button class="btn btn-link btn-block text-left text-white" type="button" data-toggle="collapse"
+                                data-target="#levelProgressionCollapse" aria-expanded="true" aria-controls="levelProgressionCollapse">
+                            Level Progression
+                        </button>
+                    </h2>
+                </div>
+                <div id="levelProgressionCollapse" class="collapse show" aria-labelledby="levelProgressionHeader" data-parent="#wanikaniStatsAccordion">
+                    <div class="card-body">
+                        {% if data %}
+                        <div class="container-fluid">
+                            <h6><b>Average Time</b></h6><hr>
+                            {% with info = data['level_progressions']['aggregates']['averages'] %}
+                            <p>{% include '_duration.html' %}</p>
+                            {% endwith %}
+
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Median Time</b></h6><hr>
+                            {% with info = data['level_progressions']['aggregates']['medians'] %}
+                            <p>{% include '_duration.html' %}</p>
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Three Fastest Levels</b></h6><hr>
+                            {% with lowest = data['level_progressions']['aggregates']['lowest'] %}
+                            <h7><i>Pass Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in lowest['pass_duration'] %}
+                                <h7>Level {{ level['level'] }} - {{ level['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if lowest['pass_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+
+                            <br><h7><i>Complete Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in lowest['complete_duration'] %}
+                                <h7>Level {{ level['level'] }} - {{ level['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if lowest['complete_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Three Slowest Levels</b></h6><hr>
+                            {% with highest = data['level_progressions']['aggregates']['highest'] %}
+                            <h7><i>Pass Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in highest['pass_duration'] %}
+                                <h7>Level {{ level['level'] }} - {{ level['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if highest['pass_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+
+                            <br><h7><i>Complete Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in highest['complete_duration'] %}
+                                <h7>Level {{ level['level'] }} - {{ level['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if highest['complete_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <br>
+<!--                        {% for level in data['level_progressions']['levels'] %}-->
+<!--                        <p>-->
+<!--                            Level: {{ level['level'] }}<br>-->
+<!--                            Pass Duration: {{ level['pass_duration'] }}<br>-->
+<!--                            Complete Duration: {{ level['complete_duration'] }}-->
+<!--                        </p>-->
+<!--                        {% endfor %}-->
+                        {% else %}
+                        Here is where your level progression data goes.
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-header bg-secondary" id="assignmentHeader">
+                    <h2 class="mb-0">
+                        <button class="btn btn-link btn-block text-left text-white" type="button" data-toggle="collapse"
+                                data-target="#assignmentCollapse" aria-expanded="true" aria-controls="assignmentCollapse">
+                            Assignment
+                        </button>
+                    </h2>
+                </div>
+                <div id="assignmentCollapse" class="collapse" aria-labelledby="assignmentHeader" data-parent="#wanikaniStatsAccordion">
+                    <div class="card-body">
+                        {% if data %}
+                        <div class="container-fluid">
+                            <h6><b>Totals By</b></h6><hr>
+                            {% with totals = data['assignments']['totals'] %}
+                            <h7><i>Status</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            <h7>Started: {{ totals['completion']['started'] }}</h7><br>
+                            <h7>Passed: {{ totals['completion']['passed'] }}</h7><br>
+                            <h7>Completed: {{ totals['completion']['completed'] }}</h7><br>
+
+                            <br><h7><i>Level</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in totals['level'] %}
+                            <h7>Level {{ level['level'] }} - {{ level['count'] }}</h7><br>
+                            {% endfor %}
+
+                            <br><h7><i>Spaced Repetition Stage</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for stage in totals['stage'] %}
+                            <h7>{{ stage['name'] }} - {{ stage['count'] }}</h7><br>
+                            {% endfor %}
+
+                            <br><h7><i>Type</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for type in totals['type'] %}
+                            <h7>{{ type['type'][0]|upper }}{{ type['type'][1:] }}  - {{ type['count'] }}</h7><br>
+                            {% endfor %}
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Average</b></h6><hr>
+                            {% with info = data['assignments']['aggregates']['averages'] %}
+                            <p>{% include '_duration.html' %}</p>
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Median</b></h6><hr>
+                            {% with info = data['assignments']['aggregates']['medians'] %}
+                            <p>{% include '_duration.html' %}</p>
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <!-- TODO: Need to display image instead of characters for certain radicals -->
+                        <div class="container-fluid">
+                            <h6><b>Three Fastest Assignments</b></h6><hr>
+                            {% with lowest = data['assignments']['aggregates']['lowest'] %}
+                            <h7><i>Pass Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for assignment in lowest['pass_duration'] %}
+                                <h7>{{ assignment['characters'] }} - {{ assignment['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if lowest['pass_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+
+                            <br><h7><i>Complete Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for assignment in lowest['complete_duration'] %}
+                                <h7>{{ assignment['characters'] }} - {{ assignment['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if lowest['complete_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Three Slowest Assignments</b></h6><hr>
+                            {% with highest = data['assignments']['aggregates']['highest'] %}
+                            <h7><i>Pass Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for assignment in highest['pass_duration'] %}
+                                <h7>{{ assignment['characters'] }} - {{ assignment['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if highest['pass_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+
+                            <br><h7><i>Complete Duration</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for assignment in highest['complete_duration'] %}
+                                <h7>{{ assignment['characters'] }} - {{ assignment['pass_duration'] }} seconds</h7><br>
+                            {% endfor %}
+                            {% if highest['complete_duration']|length < 1 %}
+                            N/A
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <br>
+                        {% else %}
+                        Here is where your assignment data goes.
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-header bg-secondary" id="reviewHeader">
+                    <h2 class="mb-0">
+                        <button class="btn btn-link btn-block text-left text-white" type="button" data-toggle="collapse"
+                                data-target="#reviewCollapse" aria-expanded="true" aria-controls="reviewCollapse">
+                            Review
+                        </button>
+                    </h2>
+                </div>
+                <div id="reviewCollapse" class="collapse" aria-labelledby="reviewHeader" data-parent="#wanikaniStatsAccordion">
+                    <div class="card-body">
+                        {% if data %}
+                        <div class="container-fluid">
+                            <h6><b>Totals By</b></h6><hr>
+                            {% with totals = data['reviews']['totals'] %}
+                            <h7><i>Accuracy</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            <h7><i>Meaning</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:3%">
+                            {% for accuracy in totals['accuracy']['meaning'] %}
+                            <h7>{{ accuracy['type'][0]|upper }}{{ accuracy['type'][1:] }} - {{ accuracy['accuracy'] }}%</h7><br>
+                            {% endfor %}
+                            <br><h7><i>Reading</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:3%">
+                            {% for accuracy in totals['accuracy']['reading'] %}
+                            <h7>{{ accuracy['type'][0]|upper }}{{ accuracy['type'][1:] }} - {{ accuracy['accuracy'] }}%</h7><br>
+                            {% endfor %}
+
+                            <br><h7><i>Level</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for level in totals['level'] %}
+                            <h7>Level {{ level['level'] }} - {{ level['count'] }}</h7><br>
+                            {% endfor %}
+
+                            <br><h7><i>Spaced Repetition Stage (SRS)</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for stage in totals['stage'] %}
+                            <h7>{{ stage['name'] }} - {{ stage['count'] }}</h7><br>
+                            {% endfor %}
+
+                            <br><h7><i>Type</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for type in totals['type'] %}
+                            <h7>{{ type['type'][0]|upper }}{{ type['type'][1:] }}  - {{ type['count'] }}</h7><br>
+                            {% endfor %}
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Average</b></h6><hr>
+                            {% with info = data['reviews']['aggregates']['averages'] %}
+                            <p>
+                                Incorrect Meanings Per Review - {{ info['incorrect_meanings'] }}<br>
+                                Incorrect Readings Per Review - {{ info['incorrect_readings'] }}<br>
+                                SRS Change Per Review - {{ info['srs_stage_change'] }}<br>
+                            </p>
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <div class="container-fluid">
+                            <h6><b>Median</b></h6><hr>
+                            {% with info = data['reviews']['aggregates']['medians'] %}
+                            <p>
+                                Incorrect Meanings Per Review - {{ info['incorrect_meanings'] }}<br>
+                                Incorrect Readings Per Review - {{ info['incorrect_readings'] }}<br>
+                                SRS Change Per Review - {{ info['srs_stage_change'] }}<br>
+                            </p>
+                            {% endwith %}
+                        </div>
+                        <br>
+
+                        <!-- TODO: Need to display image instead of characters for certain radicals -->
+                        <div class="container-fluid">
+                            <h6><b>Three Worst Reviews</b></h6><hr>
+                            {% with highest = data['reviews']['aggregates']['highest'] %}
+                            <h7><i>Incorrect Meaning</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for review in highest['incorrect_meaning_answers'] %}
+                                <h7>{{ review['characters'] }} - {{ review['incorrect_meaning_answers'] }} times</h7><br>
+                            {% endfor %}
+                            {% if highest['incorrect_meaning_answers']|length < 1 %}
+                            N/A
+                            {% endif %}
+
+                            <br><h7><i>Incorrect Reading</i></h7>
+                            <hr class="border-primary" style="margin-right: 100%; width:10%">
+                            {% for review in highest['incorrect_reading_answers'] %}
+                                <h7>{{ review['characters'] }} - {{ review['incorrect_reading_answers'] }} times</h7><br>
+                            {% endfor %}
+                            {% if highest['incorrect_reading_answers']|length < 1 %}
+                            N/A
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <br>
+                        {% else %}
+                        Here is where your review data goes.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

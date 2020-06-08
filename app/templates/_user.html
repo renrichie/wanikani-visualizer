@@ -1,0 +1,30 @@
+<div class="h-100 d-flex justify-content-center align-items-center">
+    <div class="card mb-3" style="max-width: 540px;">
+        <div class="row no-gutters">
+            <div class="col-md-4" style="margin-top:1%">
+                {% if profile_pic %}
+                <img src="{{ url_for('static', filename=profile_pic) }}" class="card-img">
+                {% endif %}
+            </div>
+            <div class="col-md-8">
+                <div class="card-body">
+                    {% if data %}
+                    <h5 class="card-title">{{ data['user']['username'] }}</h5>
+                    <hr>
+                    <p class="card-text">
+                        Level {{ data['user']['level'] }}<br>
+                        Created on {{ data['user']['start_date'] }}
+                    </p>
+                    {% else %}
+                    <h5 class="card-title">Username</h5>
+                    <hr>
+                    <p class="card-text">
+                        Level: N/A<br>
+                        Start Date: N/A
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
