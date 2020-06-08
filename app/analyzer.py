@@ -36,7 +36,6 @@ class Analyzer:
             JSON containing all the user data.
 
         """
-        self._clean_stale_data()
         self._initialize_static_info()
 
         user = self._process_user(user_info=self._client.get_user())
@@ -79,31 +78,6 @@ class Analyzer:
         pretty_print(user_stats)
 
         return user_stats
-
-    def _clean_stale_data(self):
-        """
-        Removes all data from the database every week to ensure its accuracy.
-
-        Returns
-        -------
-        None
-
-        """
-        current_time = datetime.utcnow()
-
-        # Oldest record can be determined by looking at the create dates if any records exist.
-        # If there are no records, then the current time would be the oldest since we are about to make one.
-        oldest_record = self._db.query_one('SELECT create_date FROM account ORDER BY create_date ASC LIMIT 1')
-        old_time = oldest_record['create_date'] if oldest_record else current_time
-
-        time_elapsed_since_first_query = self._calculate_time_delta(old_time, current_time)
-
-        if time_elapsed_since_first_query >= (60 * 60 * 24 * 7):
-            logging.info(f'Time elapsed since first query: {time_elapsed_since_first_query} seconds')
-            logging.info('Clearing stale data...')
-            self._db.clear_tables(
-                ['review', 'assignment', 'level_progression', 'stage', 'subject', 'account']
-            )
 
     def _initialize_static_info(self):
         """
