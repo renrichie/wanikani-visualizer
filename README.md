@@ -15,5 +15,5 @@ This is a work in progress.
 - [ ] Add unit tests and integration tests
 - [ ] Add documentation that explains what the program does and how.
 
-### Nice to Have
+## Nice to Have
 - [ ] Split main entry point into multiple getters for populating the UI.
